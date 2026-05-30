@@ -20,6 +20,8 @@ import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
 import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
+import { unzip, looksLikeZip } from '../io/zip.js';
+import { parseOpenStereo } from '../io/openstereo.js';
 
 const { conversions, color } = bearing;
 const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
@@ -80,12 +82,23 @@ export function mountApp(root) {
     a.href = URL.createObjectURL(blob); a.download = 'project.osjs.json';
     a.click(); URL.revokeObjectURL(a.href);
   };
+  const [notice, setNotice] = signal('');
   const openInput = document.createElement('input');
-  openInput.type = 'file'; openInput.accept = '.json,.osjs,application/json';
+  openInput.type = 'file'; openInput.accept = '.json,.osjs,.openstereo,application/json,application/zip';
   openInput.onchange = async () => {
     const f = openInput.files && openInput.files[0]; if (!f) return;
-    try { loadProject(project, JSON.parse(await f.text())); setSelected(project.items()[0] || null); }
-    catch (e) { console.error('open project failed', e); }
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      if (looksLikeZip(buf) || /\.openstereo$/i.test(f.name)) {
+        const data = parseOpenStereo(await unzip(buf));     // best-effort OpenStereo import
+        loadProject(project, data);
+        setNotice(data.skipped.length ? `imported · skipped ${data.skipped.length}: ${data.skipped.join('; ')}` : 'OpenStereo project imported');
+      } else {
+        loadProject(project, JSON.parse(new TextDecoder().decode(buf)));
+        setNotice('');
+      }
+      setSelected(project.items()[0] || null);
+    } catch (e) { console.error('open failed', e); setNotice(`could not open ${f.name}: ${e.message}`); }
     openInput.value = '';
   };
 
@@ -593,7 +606,7 @@ export function mountApp(root) {
       </aside>
     </div>
     <footer class="statusbar">
-      <span class="cur">${() => cursorText()}</span>
+      <span class="cur">${() => notice() || cursorText()}</span>
       <span class="spacer"></span>
       <span class="cnt">${() => countText()}</span>
     </footer>
