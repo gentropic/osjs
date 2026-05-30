@@ -31,6 +31,7 @@ export class NetRenderer {
   render() {
     const sn = this.sn;
     sn.clear();
+    sn.clearContours();
     for (const p of this.project.contribute('net')) this._draw(p);
     sn.render();
   }
@@ -53,6 +54,12 @@ export class NetRenderer {
       case 'text': {
         const [t, pl] = conversions.dcosToLine(p.dir);
         sn.text(t, pl, p.content, st); break;
+      }
+      case 'contour': {
+        // bearing holds a single contour layer, so the last contour primitive
+        // wins if multiple datasets enable contours (a known v0 limitation).
+        sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts });
+        break;
       }
       // polyline / fill / raster: TODO — motivates a couple of primitive-level
       // methods on bearing (point-at-dcos, polyline3d) so it's a cleaner backend.

@@ -41,19 +41,43 @@ export function mountApp(root) {
   const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 260 });
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
-  // ── data list ──
-  const row = (item) => h`
-    <div class="it ${() => (selected() === item ? 'sel' : '')}" onclick=${() => setSelected(item)}>
-      <input type="checkbox" ${() => (item.visible() ? 'checked' : null)}
-             onchange=${(e) => item.setVisible(e.target.checked)} onclick=${(e) => e.stopPropagation()}>
-      <span class="sw" style=${() => ({ background: item.style().color || '#888' })}></span>
-      <span class="nm">${() => item.name}</span>
-      <span class="ty">${item.type}</span>
-      <button class="rm" title="remove" onclick=${(e) => {
-        e.stopPropagation(); project.remove(item);
-        if (selected() === item) setSelected(project.items()[0] || null);
-      }}>×</button>
+  // ── data tree (datasets expand into toggleable layers) ──
+  const checkbox = (checked, onToggle, stop) => {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !!checked;        // .checked PROPERTY (not attribute)
+    cb.onchange = (e) => onToggle(e.target.checked);
+    if (stop) cb.onclick = (e) => e.stopPropagation();
+    return cb;
+  };
+
+  const row = (item) => {
+    const [expanded, setExpanded] = signal(false);
+    const vis = checkbox(item.currentVisible(), (v) => item.setVisible(v), true);
+
+    const kids = document.createElement('div');
+    kids.className = 'kids';
+    for (const L of item.constructor.LAYERS || []) {
+      const cb = checkbox(item.currentLayers()[L.key], () => item.toggleLayer(L.key));
+      kids.append(h`<label class="layer">${cb}<span>${L.label}</span></label>`);
+    }
+    const kidsWrap = h`<div class="kidswrap">${kids}</div>`;
+    effect(() => { kidsWrap.style.display = expanded() ? 'block' : 'none'; });
+
+    return h`<div class="ds">
+      <div class="it ${() => (selected() === item ? 'sel' : '')}" onclick=${() => setSelected(item)}>
+        <button class="caret" onclick=${(e) => { e.stopPropagation(); setExpanded((v) => !v); }}>${() => (expanded() ? '▾' : '▸')}</button>
+        ${vis}
+        <span class="sw" style=${() => ({ background: item.style().color || '#888' })}></span>
+        <span class="nm">${() => item.name}</span>
+        <span class="ty">${item.type}</span>
+        <button class="rm" title="remove" onclick=${(e) => {
+          e.stopPropagation(); project.remove(item);
+          if (selected() === item) setSelected(project.items()[0] || null);
+        }}>×</button>
+      </div>
+      ${kidsWrap}
     </div>`;
+  };
   const list = each(project.items, row, (it) => it.id);
 
   // ── add-data form (toggled) ──
@@ -101,22 +125,19 @@ export function mountApp(root) {
 
   function propsFor(item) {
     if (!item) return h`<div class="muted">no selection</div>`;
-    const st = item.style();
-    const set = (patch) => item.setStyle({ ...item.style(), ...patch });
-    const controls = [
-      h`<label>colour <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>`,
-    ];
-    if (item.type === 'planes') {
-      controls.push(h`<label><input type="checkbox" ${st.showPoles ? 'checked' : null} onchange=${(e) => set({ showPoles: e.target.checked })}> show poles</label>`);
-      controls.push(h`<label>width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>`);
-    } else {
-      controls.push(h`<label>size <input type="number" min="1" max="10" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>`);
-    }
+    const st = item.currentStyle();                       // untracked: props rebuilds on selection only
+    const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
+    const sizeCtl = item.type === 'planes'
+      ? h`<label>width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>`
+      : h`<label>size <input type="number" min="1" max="10" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>`;
     const s = item.stats();
-    const statline = s ? `S1 ${s.eigenvalues[0].toFixed(3)} · K ${s.K.toFixed(2)} · n ${s.fisher.n}` : `${item.measurements().length} measurement(s)`;
+    const statline = s
+      ? `S₁ ${s.eigenvalues[0].toFixed(3)} · K ${s.K.toFixed(2)} · C ${s.C.toFixed(2)} · n ${s.fisher.n}`
+      : `${item.measurements().length} measurement(s)`;
     return h`<div class="pbody">
       <div class="phead">${item.name} <span class="ty">${item.type}</span></div>
-      ${controls}
+      <label>colour <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
+      ${sizeCtl}
       <div class="stat">${statline}</div>
     </div>`;
   }

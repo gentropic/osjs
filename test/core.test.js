@@ -8,10 +8,10 @@ test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
   assert.equal(p.kind, 'greatCircle');
   assert.deepEqual(p.source, { item: 'a', datum: 2 });
-  assert.equal(KINDS.length, 7);
+  assert.equal(KINDS.length, 8);
 });
 
-test('PlaneSet contributes one great circle per plane to the net', () => {
+test('PlaneSet defaults to great circles only (poles layer off)', () => {
   const ps = new PlaneSet({ measurements: [[120, 35], [130, 40]] });
   const prims = ps.contribute('net');
   assert.equal(prims.length, 2);
@@ -19,10 +19,30 @@ test('PlaneSet contributes one great circle per plane to the net', () => {
   assert.equal(prims[0].source.item, ps.id);
 });
 
-test('showPoles adds a point per plane', () => {
-  const ps = new PlaneSet({ measurements: [[120, 35]], style: { showPoles: true } });
+test('toggling the poles layer adds a point per plane', () => {
+  const ps = new PlaneSet({ measurements: [[120, 35]] });
+  assert.deepEqual(ps.contribute('net').map((p) => p.kind), ['greatCircle']);
+  ps.toggleLayer('poles');
+  assert.deepEqual(ps.contribute('net').map((p) => p.kind), ['greatCircle', 'point']);
+});
+
+test('contours / mean / eigenvectors layers emit the right primitives', () => {
+  const ps = new PlaneSet({ measurements: [[120, 35], [125, 40], [118, 32], [130, 38]] });
+  ps.toggleLayer('contours');
+  assert.ok(ps.contribute('net').some((p) => p.kind === 'contour'));
+  ps.toggleLayer('mean');
+  assert.ok(ps.contribute('net').some((p) => p.source.mean));
+  ps.toggleLayer('eigen');
   const kinds = ps.contribute('net').map((p) => p.kind);
-  assert.deepEqual(kinds, ['greatCircle', 'point']);
+  assert.ok(kinds.filter((k) => k === 'text').length === 3); // V1/V2/V3 labels
+});
+
+test('layer + visible snapshots are untracked reads', () => {
+  const ps = new PoleSet({ measurements: [[210, 65]], visible: false });
+  assert.equal(ps.currentVisible(), false);
+  assert.equal(ps.currentLayers().points, true);
+  ps.toggleLayer('points');
+  assert.equal(ps.currentLayers().points, false);
 });
 
 test('items contribute nothing to an unknown space', () => {
