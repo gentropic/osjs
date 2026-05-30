@@ -142,6 +142,12 @@
     .props input[type="checkbox"] { accent-color: var(--cyan); }
     .stat { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); padding-top: 2px; }
     .muted { color: var(--ink-faint); padding: 4px 0; }
+    /* inspector section title + range control */
+    .istit { margin: 12px 0 2px; color: var(--ink-faint); font-size: 10px; letter-spacing: .16em;
+             text-transform: uppercase; font-weight: 600; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+    .props label .rng { flex: 1; min-width: 0; accent-color: var(--cyan); }
+    .props label .rngval { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); min-width: 34px; text-align: right; }
+    .props label .grp.small { margin-left: auto; }
 
     /* inspector: rich properties + settings */
     .nameedit { font: inherit; font-weight: 700; font-size: 14px; border: 0; border-bottom: 1px solid transparent;

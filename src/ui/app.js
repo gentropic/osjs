@@ -49,6 +49,25 @@ export function mountApp(root) {
   const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 300 });
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
+  // ── per-item stylesheet ──
+  // Opacity, line-style and open/filled markers ride on CSS keyed to a `ds-<id>`
+  // class the net renderer stamps on each element. SVG presentation attributes
+  // lose to a class rule, so this overrides the engine's fill/stroke/width
+  // without forking it — and these tweaks need no net re-render to take effect.
+  const sheet = document.createElement('style');
+  document.head.appendChild(sheet);
+  const dash = (kind, w) => kind === 'dashed' ? `${w * 4} ${w * 3}` : kind === 'dotted' ? `${w} ${w * 2.4}` : 'none';
+  function itemCSS(item) {
+    const st = item.style(), c = `ds-${item.id}`, color = st.color || '#888';
+    const op = st.opacity == null ? 1 : st.opacity;
+    const open = st.pointFill === 'open';
+    const ew = st.edgeWidth == null ? (open ? 1.2 : 0) : st.edgeWidth;
+    const w = st.width || 1;
+    return `.osjs-pole.${c},.osjs-line.${c}{fill:${open ? 'none' : color};stroke:${open || ew > 0 ? color : 'none'};stroke-width:${ew};opacity:${op};}\n`
+         + `.osjs-plane.${c}{stroke:${color};stroke-dasharray:${dash(st.lineStyle, w)};opacity:${op};}\n`;
+  }
+  effect(() => { sheet.textContent = project.items().map(itemCSS).join(''); });
+
   net.onHover = (d) => setCursor(d);
   net.onPick = (d) => {
     const it = selected();
@@ -124,22 +143,39 @@ export function mountApp(root) {
   const propsHost = document.createElement('div');
   propsHost.className = 'props';
   effect(() => { propsHost.replaceChildren(propsFor(selected())); });
+  // a segmented (radio-like) control over style; reads the live snapshot
+  const styleSeg = (item, key, def, opts) => {
+    const cur = () => item.style()[key] ?? def;
+    const set = (v) => item.setStyle({ ...item.currentStyle(), [key]: v });
+    return h`<span class="grp small">${opts.map(([v, l]) =>
+      h`<button class=${() => (cur() === v ? 'seg on' : 'seg')} onclick=${() => set(v)}>${l}</button>`)}</span>`;
+  };
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;
     const st = item.currentStyle();
     const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
-    const sizeCtl = item.type === 'planes'
-      ? h`<label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>`
-      : h`<label>point size <input type="number" min="1" max="10" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>`;
+    const opacityPct = Math.round((st.opacity == null ? 1 : st.opacity) * 100);
+
+    // geometry controls differ per item type
+    const geom = item.type === 'planes'
+      ? h`<label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>
+          <label>line style ${styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])}</label>`
+      : h`<label>point size <input type="number" min="1" max="12" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>
+          <label>marker ${styleSeg(item, 'pointFill', 'filled', [['filled', 'filled'], ['open', 'open']])}</label>
+          <label>edge width <input type="number" min="0" max="3" step="0.2" value=${st.edgeWidth ?? 0} oninput=${(e) => set({ edgeWidth: +e.target.value })}></label>`;
+
     const s = item.stats();
     let statsNode;
     if (s) {
       const [mt, mp] = conversions.dcosToLine(s.fisher.mean);
-      const srow = (k, v) => h`<div class="srow"><span>${k}</span><b>${v}</b></div>`;
+      const k = (s.eigenvalues[0] - s.eigenvalues[1]) || 0, e2 = (s.eigenvalues[1] - s.eigenvalues[2]) || 0;
+      const srow = (key, v) => h`<div class="srow"><span>${key}</span><b>${v}</b></div>`;
       statsNode = h`<div class="stats">
         ${srow('S₁ S₂ S₃', s.eigenvalues.map((v) => v.toFixed(3)).join('  '))}
+        ${srow('strength (S₁−S₂, S₂−S₃)', `${k.toFixed(3)}  ${e2.toFixed(3)}`)}
         ${srow('Woodcock K · C', `${s.K.toFixed(2)} · ${s.C.toFixed(2)}`)}
         ${srow('Vollmer P G R', `${s.P.toFixed(2)} ${s.G.toFixed(2)} ${s.R.toFixed(2)}`)}
+        ${srow('fabric', s.K > 1 ? 'cluster' : s.K < 1 ? 'girdle' : 'uniform')}
         ${srow('Fisher mean', `${az(mt)}/${p2(mp)}`)}
         ${srow('κ · α₉₅ · n', `${s.fisher.kappa.toFixed(1)} · ${s.fisher.alpha95.toFixed(1)}° · ${s.fisher.n}`)}
       </div>`;
@@ -148,9 +184,16 @@ export function mountApp(root) {
     }
     return h`<div class="pbody">
       <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
-      <div class="ptype">${item.type}</div>
-      <label>colour <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
-      ${sizeCtl}
+      <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
+      <div class="istit">style</div>
+      <label>color <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
+      ${geom}
+      ${(() => {
+        const out = h`<span class="rngval">${opacityPct}%</span>`;
+        return h`<label>opacity <input class="rng" type="range" min="10" max="100" step="5" value=${opacityPct}
+          oninput=${(e) => { out.textContent = `${e.target.value}%`; set({ opacity: +e.target.value / 100 }); }}>${out}</label>`;
+      })()}
+      <div class="istit">statistics</div>
       ${statsNode}
     </div>`;
   }

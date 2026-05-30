@@ -14,8 +14,12 @@ import * as bearing from '../../vendor/bearing.mjs';
 
 const { Stereonet, conversions, mat3 } = bearing;
 
-const pointStyle = (st) => ({ fill: st.color || st.fill, stroke: st.stroke, r: st.size, class: st.class });
-const lineStyle = (st) => ({ stroke: st.color || st.stroke, 'stroke-width': st.width, class: st.class });
+// The host injects a per-item stylesheet keyed on `ds-<id>` (see ui/app.js), so
+// opacity, line-style (dash) and open/filled markers are CSS — SVG presentation
+// attributes lose to a class rule, so the engine's fill/stroke get overridden.
+const cls = (st, item) => [item && `ds-${item}`, st.class].filter(Boolean).join(' ') || undefined;
+const pointStyle = (st, item) => ({ fill: st.color || st.fill, stroke: st.stroke, r: st.size, class: cls(st, item) });
+const lineStyle = (st, item) => ({ stroke: st.color || st.stroke, 'stroke-width': st.width, class: cls(st, item) });
 
 // hex "#rrggbb" → "rgba(r,g,b,a)"
 function rgba(hex, a) {
@@ -59,11 +63,11 @@ export class NetRenderer {
   }
 
   _draw(p) {
-    const sn = this.sn, st = p.style || {};
+    const sn = this.sn, st = p.style || {}, item = p.source && p.source.item;
     switch (p.kind) {
-      case 'point': { const [t, pl] = conversions.dcosToLine(p.dir); sn.line(t, pl, pointStyle(st)); break; }
-      case 'greatCircle': { const [dd, dip] = conversions.dcosToPlane(p.pole); sn.plane(dd, dip, lineStyle(st)); break; }
-      case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, lineStyle(st)); break; }
+      case 'point': { const [t, pl] = conversions.dcosToLine(p.dir); sn.line(t, pl, pointStyle(st, item)); break; }
+      case 'greatCircle': { const [dd, dip] = conversions.dcosToPlane(p.pole); sn.plane(dd, dip, lineStyle(st, item)); break; }
+      case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, lineStyle(st, item)); break; }
       case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
       case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, method: this.project.contourMethod(), ...p.opts }); break;
       case 'heatmap': sn.heatmap(p.dcos, { color: (t) => rgba(st.color, 0.1 + 0.8 * t), method: this.project.contourMethod(), ...p.opts }); break;
