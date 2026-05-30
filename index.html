@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!-- OSJS · OpenStereo, web edition — dev entry. ES modules run directly (no
+     build needed for dev); serve over http (ESM won't load from file://):
+       npx serve .    or    python -m http.server -->
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OSJS · stereonet</title>
+  <style>
+    :root { --bg: #e9edf1; --fg: #1d2733; }
+    html[data-theme="dark"] { --bg: #0a0d11; --fg: #cad4df; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif;
+           display: flex; align-items: center; justify-content: center; }
+    #osjs svg { width: min(80vh, 640px); height: auto; }
+  </style>
+</head>
+<body>
+  <div id="osjs"></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
