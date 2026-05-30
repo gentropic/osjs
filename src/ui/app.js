@@ -129,18 +129,27 @@ export function mountApp(root) {
 
   // ── layout ──
   const app = h`<div class="osjs-app">
-    <aside class="side">
-      <div class="sect">data</div>
-      <div class="list">${list}</div>
-      ${addHost}
-      <div class="sect">properties</div>
-      ${propsHost}
-    </aside>
-    <main class="main">${net.element}</main>
-    <aside class="aux">
-      <div class="panel"><div class="sect">rose</div>${rose.element}</div>
-      <div class="panel"><div class="sect">fabric ${fabricToggle}</div>${fabric.element}</div>
-    </aside>
+    <header class="topbar">
+      <div class="brand">
+        <span class="glyph">⌖</span><span class="name">OSJS</span>
+        <span class="sub">OpenStereo · web edition</span>
+      </div>
+      <span class="spacer"></span>
+    </header>
+    <div class="body">
+      <aside class="side">
+        <div class="sect">data <span class="count">${() => project.items().length}</span></div>
+        <div class="list">${list}</div>
+        ${addHost}
+        <div class="sect">properties</div>
+        ${propsHost}
+      </aside>
+      <main class="main">${net.element}</main>
+      <aside class="aux">
+        <div class="panel"><div class="sect">rose</div><div class="panel-body">${rose.element}</div></div>
+        <div class="panel"><div class="sect">fabric ${fabricToggle}</div><div class="panel-body">${fabric.element}</div></div>
+      </aside>
+    </div>
   </div>`;
 
   root.replaceChildren(app);
