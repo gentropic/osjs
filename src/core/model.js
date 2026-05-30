@@ -1,15 +1,18 @@
 /**
  * @module core/model — the reactive domain model.
  *
- * A Project holds typed DataItems. Each item is a PURE source of plot primitives
- * via contribute(space) — no DOM, no UI coupling (unlike OpenStereo's PyQt
- * DataItem, which inherited from a tree widget). measurements / visibility /
- * style are sideact signals, so renderers and UI react with fine granularity:
- * reading dcos()/style()/visible() inside an effect tracks them automatically.
+ * A Project holds typed DataItems. Each item is a PURE source of plot
+ * contributions via contribute(space) — no DOM, no UI coupling. measurements /
+ * visibility / style are sideact signals, so renderers and UI react with fine
+ * granularity (reading dcos()/style()/visible() inside an effect tracks them).
  *
- * Item hierarchy mirrors OpenStereo (modernised): AttitudeData → PlaneSet /
- * PoleSet / LineSet, with SmallCircleSet / FaultSet to follow. New data type =
- * new subclass returning the right primitives; renderers stay closed.
+ * Contribution shapes are per-space:
+ *   - 'net'    → geometric primitives (the closed vocabulary in primitives.js)
+ *   - 'rose'   → one { kind:'rose', azimuths, axial, … } per item (renderer bins)
+ *   - 'fabric' → one { kind:'fabric', dcos, … } per item (renderer computes coords)
+ * Geometric variety lives in the net's closed vocabulary; the statistical plots
+ * (rose, fabric) are aggregates the renderer composes, so the item just hands
+ * over the data it has.
  */
 
 import { signal } from '../../vendor/sideact-signals.js';
@@ -34,11 +37,30 @@ export class DataItem {
     this.style = style; this.setStyle = setStyle;
   }
 
-  _convert(_pair) { return [0, 0, -1]; }   // subclass: a degree pair → unit vector
-  contribute(_space) { return []; }        // subclass: → Primitive[]
+  _convert(_pair) { return [0, 0, -1]; }  // subclass: a degree pair → unit vector
+  _net() { return []; }                   // subclass: geometric primitives
+  _azimuths() { return []; }              // subclass: azimuths for the rose
+  get _axial() { return true; }           // most structural data is axial
 
   /** Measurements as direction cosines (reactive: tracks the measurements signal). */
   dcos() { return this.measurements().map((m) => this._convert(m)); }
+
+  contribute(space) {
+    if (space === 'net') return this._net();
+    if (space === 'rose') {
+      const az = this._azimuths();
+      return az.length
+        ? [{ kind: 'rose', azimuths: az, axial: this._axial, style: this.style(), label: this.name, source: { item: this.id } }]
+        : [];
+    }
+    if (space === 'fabric') {
+      const d = this.dcos();
+      return d.length >= 2
+        ? [{ kind: 'fabric', dcos: d, style: this.style(), label: this.name, source: { item: this.id } }]
+        : [];
+    }
+    return [];
+  }
 
   /** Orientation statistics (eigen/fabric + Fisher), or null for <2 data. */
   stats() {
@@ -49,11 +71,11 @@ export class DataItem {
   }
 }
 
-/** A set of planes — drawn as great circles (and optionally their poles). */
+/** A set of planes — great circles on the net; strikes on the rose. */
 export class PlaneSet extends DataItem {
   _convert([dd, dip]) { return conversions.planeToDcos(dd, dip); }
-  contribute(space) {
-    if (space !== 'net') return [];
+  _azimuths() { return this.measurements().map(([dd]) => (dd - 90 + 360) % 360); } // strike (RHR)
+  _net() {
     const st = this.style();
     const out = [];
     this.dcos().forEach((d, i) => {
@@ -65,22 +87,22 @@ export class PlaneSet extends DataItem {
 }
 PlaneSet.kind = 'planes';
 
-/** Poles to planes — drawn as points. */
+/** Poles to planes — points on the net; strikes on the rose. */
 export class PoleSet extends DataItem {
   _convert([dd, dip]) { return conversions.planeToDcos(dd, dip); }
-  contribute(space) {
-    if (space !== 'net') return [];
+  _azimuths() { return this.measurements().map(([dd]) => (dd - 90 + 360) % 360); }
+  _net() {
     const st = this.style();
     return this.dcos().map((d, i) => point(d, st, { item: this.id, datum: i }));
   }
 }
 PoleSet.kind = 'poles';
 
-/** Lineations — drawn as points. */
+/** Lineations — points on the net; trends on the rose. */
 export class LineSet extends DataItem {
   _convert([t, p]) { return conversions.lineToDcos(t, p); }
-  contribute(space) {
-    if (space !== 'net') return [];
+  _azimuths() { return this.measurements().map(([t]) => ((t % 360) + 360) % 360); }
+  _net() {
     const st = this.style();
     return this.dcos().map((d, i) => point(d, st, { item: this.id, datum: i }));
   }
@@ -100,7 +122,7 @@ export class Project {
   add(item) { this.setItems([...this.items(), item]); return item; }
   remove(item) { this.setItems(this.items().filter((i) => i !== item)); }
 
-  /** Aggregate primitives for a plot space from all visible items. */
+  /** Aggregate contributions for a plot space from all visible items. */
   contribute(space) {
     const out = [];
     for (const it of this.items()) if (it.visible()) out.push(...it.contribute(space));

@@ -25,8 +25,8 @@ test('showPoles adds a point per plane', () => {
   assert.deepEqual(kinds, ['greatCircle', 'point']);
 });
 
-test('items contribute nothing to spaces they do not serve (v0)', () => {
-  assert.equal(new PlaneSet({ measurements: [[1, 2]] }).contribute('rose').length, 0);
+test('items contribute nothing to an unknown space', () => {
+  assert.equal(new PlaneSet({ measurements: [[1, 2]] }).contribute('nope').length, 0);
 });
 
 test('Project aggregates only visible items', () => {
@@ -49,6 +49,40 @@ test('stats come from the orientation tensor', () => {
   const ps = new PlaneSet({ measurements: [[120, 35], [125, 40], [118, 32], [130, 38]] });
   const s = ps.stats();
   assert.ok(s && s.eigenvalues.length === 3 && s.fisher.n === 4);
+});
+
+test('items contribute one rose descriptor with the right azimuths', () => {
+  const planes = new PlaneSet({ measurements: [[120, 35], [130, 40]] });
+  const rose = planes.contribute('rose');
+  assert.equal(rose.length, 1);
+  assert.equal(rose[0].kind, 'rose');
+  assert.deepEqual(rose[0].azimuths, [30, 40]); // strike = dipdir − 90
+  assert.equal(rose[0].axial, true);
+
+  const lines = new LineSet({ measurements: [[300, 12], [310, 18]] });
+  assert.deepEqual(lines.contribute('rose')[0].azimuths, [300, 310]); // trend
+});
+
+test('items contribute one fabric descriptor carrying dcos', () => {
+  const ps = new PlaneSet({ measurements: [[120, 35], [125, 40], [118, 32]] });
+  const fab = ps.contribute('fabric');
+  assert.equal(fab.length, 1);
+  assert.equal(fab[0].kind, 'fabric');
+  assert.equal(fab[0].dcos.length, 3);
+  assert.equal(fab[0].label, ps.name);
+});
+
+test('fabric needs ≥2 measurements', () => {
+  assert.equal(new PoleSet({ measurements: [[210, 65]] }).contribute('fabric').length, 0);
+});
+
+test('Project aggregates each space across visible items', () => {
+  const proj = new Project();
+  proj.add(new PlaneSet({ measurements: [[120, 35], [125, 40]] }));
+  proj.add(new LineSet({ measurements: [[300, 12], [310, 18]] }));
+  assert.equal(proj.contribute('rose').length, 2);   // one per item
+  assert.equal(proj.contribute('fabric').length, 2);
+  assert.ok(proj.contribute('net').length >= 4);      // 2 great circles + 2 points
 });
 
 test('parsePairs is forgiving (space/comma/slash, comments)', () => {

@@ -12,8 +12,9 @@
     html[data-theme="dark"] { --bg: #0a0d11; --fg: #cad4df; }
     html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif;
-           display: flex; align-items: center; justify-content: center; }
-    #osjs svg { width: min(80vh, 640px); height: auto; }
+           display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #osjs > svg { width: min(70vh, 560px); height: auto; }   /* the net (direct child) */
+    #osjs div svg { width: 300px; height: auto; display: block; }  /* rose / fabric panels */
   </style>
 </head>
 <body>
