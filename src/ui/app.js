@@ -161,52 +161,63 @@ export function mountApp(root) {
   function layerChip(item, key, label) {
     return chip(label, () => item.layers()[key], () => item.toggleLayer(key));
   }
+  // IMPORTANT: each section must return a SINGLE root node. sideact's `h`
+  // mis-orders (and drops) nodes when a multi-root fragment is interpolated
+  // into another template — so every section is wrapped in one <div class="psec">
+  // (display:contents, so the .pbody flex layout is unchanged).
   function plotSection(item) {
     if (item.type !== 'planes') return '';
-    return h`<div class="istit">plot as</div>
-      <label>elements <span class="chips">${layerChip(item, 'great', 'great circles')}${layerChip(item, 'poles', 'poles')}</span></label>`;
+    return h`<div class="psec"><div class="istit">plot as</div>
+      <label>elements <span class="chips">${layerChip(item, 'great', 'great circles')}${layerChip(item, 'poles', 'poles')}</span></label></div>`;
   }
   function densitySection(item) {
     const P = item.currentParams();
     const mode = () => { const L = item.layers(); return L.heatmap && L.contours ? 'both' : L.contours ? 'lines' : L.heatmap ? 'fill' : 'off'; };
     const setMode = (m) => { item.setLayer('contours', m === 'lines' || m === 'both'); item.setLayer('heatmap', m === 'fill' || m === 'both'); };
-    return h`<div class="istit">density / contours</div>
+    return h`<div class="psec"><div class="istit">density / contours</div>
       <label>show ${seg(mode, setMode, [['off', 'off'], ['lines', 'lines'], ['fill', 'fill'], ['both', 'both']])}</label>
       <label>method ${paramSeg(item, 'cMethod', 'fisher', [['fisher', 'Fisher'], ['kamb', 'Kamb']])}</label>
       <label>smoothing σ <input type="number" min="2" max="40" step="1" placeholder="auto" value=${P.cSigma ?? ''}
         oninput=${(e) => item.setParams({ cSigma: +e.target.value || null })}></label>
       <label>levels <input type="number" min="1" max="8" step="1" value=${P.cLevels}
-        oninput=${(e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })}></label>`;
+        oninput=${(e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })}></label></div>`;
   }
   function meanSection(item) {
-    return h`<div class="istit">mean / confidence</div>
+    return h`<div class="psec"><div class="istit">mean / confidence</div>
       <label>mean vector <span class="chips">${layerChip(item, 'mean', 'show')}</span></label>
-      <label>α₉₅ cone <span class="chips">${chip('show', () => item.params().meanCone, () => item.setParams({ meanCone: !item.currentParams().meanCone }))}</span></label>`;
+      <label>α₉₅ cone <span class="chips">${chip('show', () => item.params().meanCone, () => item.setParams({ meanCone: !item.currentParams().meanCone }))}</span></label></div>`;
   }
   function eigenSection(item) {
     const cell = (i, key, label) => chip(label, () => item.params()[key][i], () => {
       const a = item.currentParams()[key].slice(); a[i] = !a[i]; item.setParams({ [key]: a });
     });
-    return h`<div class="istit">eigenvectors</div>
+    return h`<div class="psec"><div class="istit">eigenvectors</div>
       <label>show <span class="chips">${layerChip(item, 'eigen', 'on')}</span></label>
-      ${[0, 1, 2].map((i) => h`<label>V${i + 1} <span class="chips">${cell(i, 'eigPole', 'pole')}${cell(i, 'eigPlane', 'great circle')}</span></label>`)}`;
+      ${[0, 1, 2].map((i) => h`<label>V${i + 1} <span class="chips">${cell(i, 'eigPole', 'pole')}${cell(i, 'eigPlane', 'great circle')}</span></label>`)}</div>`;
   }
   function symbolSection(item) {
     const st = item.currentStyle();
     const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
     const opacityPct = Math.round((st.opacity == null ? 1 : st.opacity) * 100);
     const out = h`<span class="rngval">${opacityPct}%</span>`;
-    const geom = item.type === 'planes'
-      ? h`<label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>
-          <label>line style ${styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])}</label>`
-      : h`<label>point size <input type="number" min="1" max="12" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>
-          <label>marker ${styleSeg(item, 'pointFill', 'filled', [['filled', 'filled'], ['open', 'open']])}</label>
-          <label>edge width <input type="number" min="0" max="3" step="0.2" value=${st.edgeWidth ?? 0} oninput=${(e) => set({ edgeWidth: +e.target.value })}></label>`;
-    return h`<div class="istit">${item.type === 'planes' ? 'lines / poles' : 'symbols'}</div>
-      <label>color <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
-      ${geom}
-      <label>opacity <input class="rng" type="range" min="10" max="100" step="5" value=${opacityPct}
+    const colorLabel = h`<label>color <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>`;
+    const opacityLabel = h`<label>opacity <input class="rng" type="range" min="10" max="100" step="5" value=${opacityPct}
         oninput=${(e) => { out.textContent = `${e.target.value}%`; set({ opacity: +e.target.value / 100 }); }}>${out}</label>`;
+    // Two whole single-root templates (rather than interpolating a multi-label
+    // `geom` fragment, which sideact would scramble).
+    if (item.type === 'planes') {
+      return h`<div class="psec"><div class="istit">lines / poles</div>
+        ${colorLabel}
+        <label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>
+        <label>line style ${styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])}</label>
+        ${opacityLabel}</div>`;
+    }
+    return h`<div class="psec"><div class="istit">symbols</div>
+      ${colorLabel}
+      <label>point size <input type="number" min="1" max="12" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>
+      <label>marker ${styleSeg(item, 'pointFill', 'filled', [['filled', 'filled'], ['open', 'open']])}</label>
+      <label>edge width <input type="number" min="0" max="3" step="0.2" value=${st.edgeWidth ?? 0} oninput=${(e) => set({ edgeWidth: +e.target.value })}></label>
+      ${opacityLabel}</div>`;
   }
   function statsSection(item) {
     const s = item.stats();
