@@ -15,7 +15,7 @@ import { signal, effect } from '../../vendor/sideact/signals.js';
 import { h } from '../../vendor/sideact/dom.js';
 import { each } from '../../vendor/sideact/render.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup } from '../core/model.js';
+import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup, rotateItem, mergeItems, differenceVectors } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
@@ -54,6 +54,7 @@ export function mountApp(root) {
   if (!restored) seed(project);
 
   const [selected, setSelected] = signal(project.items()[0] || null);
+  const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
   const [pick, setPick] = signal(false);
   const [cursor, setCursor] = signal(null);
@@ -454,6 +455,20 @@ export function mountApp(root) {
       ${field('ramp', rampSel)}
       ${field('reverse', chips(rev))}</div>`;
   }
+  function toolsSection(item) {
+    if (!['planes', 'poles', 'lines'].includes(item.type)) return '';   // derived ops need pair attitudes
+    const rot = { t: 0, p: 90, a: 30 };                                  // axis trend/plunge, angle
+    const others = project.items().filter((i) => i !== item && i.type === item.type);
+    const sel = others.length ? (() => { const s = document.createElement('select'); others.forEach((it, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = it.name(); s.appendChild(o); }); return s; })() : null;
+    const mergeCtl = sel
+      ? h`<span class="fv">${sel}<button class="mini" onclick=${() => addPayload(mergeItems(item, others[+sel.value || 0]))}>merge</button></span>`
+      : h`<span class="muted">no compatible layer</span>`;
+    return h`<div class="psec"><div class="istit">tools</div>
+      ${field('rotate axis', h`<span class="fv">${num(rot.t, 0, 360, 1, (e) => { rot.t = +e.target.value; })}${num(rot.p, 0, 90, 1, (e) => { rot.p = +e.target.value; })}</span>`)}
+      ${field('by angle', h`<span class="fv">${num(rot.a, -360, 360, 1, (e) => { rot.a = +e.target.value; })}<button class="mini" onclick=${() => addPayload(rotateItem(item, rot.t, rot.p, rot.a))}>rotate →</button></span>`)}
+      ${field('difference', h`<span class="fv"><button class="mini" onclick=${() => addPayload(differenceVectors(item))}>vectors →</button></span>`)}
+      ${field('merge with', mergeCtl)}</div>`;
+  }
   function statsSection(item) {
     const s = item.stats();
     if (!s) return h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
@@ -494,6 +509,7 @@ export function mountApp(root) {
       ${densitySection(item)}
       ${meanSection(item)}
       ${eigenSection(item)}
+      ${toolsSection(item)}
       <div class="istit">statistics</div>
       ${statsSection(item)}
     </div>`;

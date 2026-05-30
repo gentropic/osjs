@@ -18,7 +18,7 @@ import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
-const { conversions, statistics, color, fault } = bearing;
+const { conversions, statistics, color, fault, vec3 } = bearing;
 const { meanVector, principalAxes, fisherStats } = statistics;
 
 // categorical palette for colour-by-class (distinct, print-friendly)
@@ -404,6 +404,34 @@ export class Project {
     for (const it of this.visibleLeaves()) out.push(...it.contribute(space));
     return out;
   }
+}
+
+// ── data tools — derive a new item payload from existing one(s) ──
+const r1 = (x) => Math.round(x * 10) / 10;
+const backFn = (type) => (type === 'lines' ? conversions.dcosToLine : conversions.dcosToPlane);
+
+/** Rotate an item's data about an axis (trend/plunge) by angle° → new payload. */
+export function rotateItem(item, trend, plunge, angle) {
+  const axis = conversions.lineToDcos(trend, plunge);
+  const back = backFn(item.type);
+  const measurements = conversions.rotateDcosArray(item.dcos(), axis, angle).map((d) => back(d).map(r1));
+  return { type: item.type, name: `${item.currentName()} (rot ${angle}°)`, measurements, style: { ...item.currentStyle() } };
+}
+
+/** Concatenate two same-type items → new payload. */
+export function mergeItems(a, b) {
+  return { type: a.type, name: `${a.currentName()} + ${b.currentName()}`,
+    measurements: [...a.currentMeasurements(), ...b.currentMeasurements()], style: { ...a.currentStyle() } };
+}
+
+/** All pairwise normalized difference vectors of an item → new lines payload. */
+export function differenceVectors(item) {
+  const d = item.dcos(), out = [];
+  for (let i = 0; i < d.length; i++) for (let j = i + 1; j < d.length; j++) {
+    const v = vec3.normalize(vec3.sub(d[i], d[j]));
+    if (Number.isFinite(v[0])) out.push(conversions.dcosToLine(v).map(r1));
+  }
+  return { type: 'lines', name: `${item.currentName()} (diff)`, measurements: out, style: { ...item.currentStyle(), size: 3 } };
 }
 
 const PROJECT_FORMAT = 'osjs-project';

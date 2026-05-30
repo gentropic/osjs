@@ -45,7 +45,7 @@ test('inspector sections render IN ORDER, each owning its own controls', () => {
   const titles = [...pbody.querySelectorAll('.istit')].map(text);
   assert.deepEqual(
     titles,
-    ['plot as', 'lines / poles', 'density / contours', 'mean / confidence', 'eigenvectors', 'statistics'],
+    ['plot as', 'lines / poles', 'density / contours', 'mean / confidence', 'eigenvectors', 'tools', 'statistics'],
     'all sections present and ordered',
   );
 

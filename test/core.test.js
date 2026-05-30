@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
 import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
@@ -153,6 +153,25 @@ test('small circles contribute an axis point + a cone per datum (aperture as ang
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
   assert.deepEqual(parseTriples('120 40 25\n300,10,15\n# c\nbad 1'), [[120, 40, 25], [300, 10, 15]]);
+});
+
+test('data tools: rotate / merge / difference vectors produce new payloads', () => {
+  const lines = new LineSet({ name: 'L', measurements: [[0, 0], [90, 0]] });   // two horizontal lines N and E
+  // rotate about vertical (plunge 90) by 90° → trends advance by 90°, still horizontal
+  const rot = rotateItem(lines, 0, 90, 90);
+  assert.equal(rot.type, 'lines');
+  assert.equal(rot.measurements.length, 2);
+  assert.ok(rot.measurements.every(([, p]) => Math.abs(p) < 0.5));            // stays horizontal
+  const trends = rot.measurements.map(([t]) => ((Math.round(t) % 360) + 360) % 360).sort((a, b) => a - b);
+  assert.deepEqual(trends, [90, 180]);                                        // N→E, E→S
+
+  const a = new PoleSet({ name: 'A', measurements: [[10, 20]] });
+  const b = new PoleSet({ name: 'B', measurements: [[30, 40], [50, 60]] });
+  assert.deepEqual(mergeItems(a, b).measurements, [[10, 20], [30, 40], [50, 60]]);
+
+  const diff = differenceVectors(new LineSet({ measurements: [[0, 0], [90, 0], [45, 10]] }));
+  assert.equal(diff.type, 'lines');
+  assert.equal(diff.measurements.length, 3);                                  // C(3,2) pairs
 });
 
 test('parseFaults reads dd/dip/rake/sense (letter or numeric sense)', () => {
