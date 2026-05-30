@@ -11,7 +11,7 @@ const files = {
     global_settings: { general_settings: { projection: 'Equal-Angle' } },
     items: [
       { name: 'structures', checked: true, items: [
-        { name: 'bedding', path: 'bedding.txt', checked: true, layer_settings_file: 'bedding.os_lyr',
+        { name: 'bedding', path: 'example_data\\bedding.txt', checked: true, layer_settings_file: 'bedding.os_lyr',
           checked_plots: { Poles: true, 'Great Circles': true, Contours: false, Eigenvectors: false },
           kwargs: { line: false, dip_direction: true, dipdir_column: 0, dip_column: 1 } },
       ] },
@@ -24,7 +24,7 @@ const files = {
       { name: 'Faults ((P)x,(L)y)', path: null, layer_settings_file: 'f.os_lyr', checked: true, checked_plots: { Michael: true }, kwargs: null },
     ],
   }),
-  'bedding.txt': 'dip direction,dip\n120,35\n130,40',
+  'bedding.txt': 'dip direction,dip\n120,35\n130,40',   // loose sibling; path above has a dir → resolved by basename
   'joints.txt': '30 80\n40 70',            // strikes → become 120/40, 130/70 as dip-dir
   'bedding.os_lyr': JSON.stringify({ plane_data: { point_settings: { c: '#0000ff', ms: 3 }, GC_settings: { colors: '#4d4d4d', linewidths: 0.8 }, check_settings: { v3point: true, v3GC: true } } }),
   'joints.os_lyr': JSON.stringify({ plane_data: { GC_settings: { colors: '#aa0000', linewidths: 1 }, point_settings: { c: '#00ff00', ms: 4 } } }),

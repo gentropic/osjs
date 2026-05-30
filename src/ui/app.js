@@ -83,24 +83,31 @@ export function mountApp(root) {
     a.click(); URL.revokeObjectURL(a.href);
   };
   const [notice, setNotice] = signal('');
-  const openInput = document.createElement('input');
-  openInput.type = 'file'; openInput.accept = '.json,.osjs,.openstereo,application/json,application/zip';
-  openInput.onchange = async () => {
-    const f = openInput.files && openInput.files[0]; if (!f) return;
+  // Open a set of dropped/picked files. For an unpacked .openstereo, select its
+  // data files alongside it — external paths resolve by basename against the set.
+  async function openFiles(fileList) {
+    const arr = [...(fileList || [])]; if (!arr.length) return;
+    const sib = {};
+    for (const f of arr) sib[f.name] = new Uint8Array(await f.arrayBuffer());
+    const zipFile = arr.find((f) => /\.openstereo$/i.test(f.name) || looksLikeZip(sib[f.name]));
     try {
-      const buf = new Uint8Array(await f.arrayBuffer());
-      if (looksLikeZip(buf) || /\.openstereo$/i.test(f.name)) {
-        const data = parseOpenStereo(await unzip(buf));     // best-effort OpenStereo import
+      if (zipFile) {
+        const merged = { ...sib, ...(await unzip(sib[zipFile.name])) };   // in-zip entries win over loose siblings
+        const data = parseOpenStereo(merged);
         loadProject(project, data);
         setNotice(data.skipped.length ? `imported · skipped ${data.skipped.length}: ${data.skipped.join('; ')}` : 'OpenStereo project imported');
       } else {
-        loadProject(project, JSON.parse(new TextDecoder().decode(buf)));
+        const j = arr.find((f) => /\.(json|osjs)$/i.test(f.name)) || arr[0];
+        loadProject(project, JSON.parse(new TextDecoder().decode(sib[j.name])));
         setNotice('');
       }
       setSelected(project.items()[0] || null);
-    } catch (e) { console.error('open failed', e); setNotice(`could not open ${f.name}: ${e.message}`); }
-    openInput.value = '';
-  };
+    } catch (e) { console.error('open failed', e); setNotice(`could not open: ${e.message}`); }
+  }
+  const openInput = document.createElement('input');
+  openInput.type = 'file'; openInput.multiple = true;
+  openInput.accept = '.json,.osjs,.openstereo,.txt,.csv,.tsv,application/json,application/zip';
+  openInput.onchange = () => { openFiles(openInput.files); openInput.value = ''; };
 
   // ── per-item stylesheet ──
   // Opacity, line-style and open/filled markers ride on CSS keyed to a `ds-<id>`
@@ -151,6 +158,7 @@ export function mountApp(root) {
     el.addEventListener('dragover', (e) => { if (dragNode && dragNode !== node) { e.preventDefault(); e.stopPropagation(); el.classList.add('drop'); } });
     el.addEventListener('dragleave', () => el.classList.remove('drop'));
     el.addEventListener('drop', (e) => {
+      if (e.dataTransfer.files && e.dataTransfer.files.length) return;   // file drop → let it bubble to app
       e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
       const d = dragNode; dragNode = null;
       if (!d || d === node) return;
@@ -570,7 +578,10 @@ export function mountApp(root) {
     return `${project.items().length} sets · ${n} measurements · ${project.projection()}, lower hemisphere`;
   };
 
-  const app = h`<div class="osjs-app">
+  const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+  const app = h`<div class="osjs-app"
+      ondragover=${(e) => { if (hasFiles(e)) e.preventDefault(); }}
+      ondrop=${(e) => { if (hasFiles(e)) { e.preventDefault(); openFiles(e.dataTransfer.files); } }}>
     <header class="topbar">
       <div class="brand"><span class="glyph">⌖</span><span class="name">OSJS</span><span class="sub">OpenStereo · web edition</span></div>
       <span class="spacer"></span>
