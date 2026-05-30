@@ -15,7 +15,7 @@ import { signal, effect } from '../../vendor/sideact/signals.js';
 import { h } from '../../vendor/sideact/dom.js';
 import { each } from '../../vendor/sideact/render.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { Project, ITEM_TYPES } from '../core/model.js';
+import { Project, ITEM_TYPES, serializeProject, loadProject } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
@@ -28,8 +28,11 @@ const az = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0');
 const p2 = (x) => String(Math.round(x)).padStart(2, '0');
 const fmtNum = (x) => (Number.isInteger(x) ? String(x) : Math.abs(x) >= 100 ? String(Math.round(x)) : x.toFixed(2));
 
-export function mountApp(root) {
-  const project = new Project();
+const LS_KEY = 'osjs-project';
+const lsGet = (k) => { try { return typeof localStorage !== 'undefined' && localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { if (typeof localStorage !== 'undefined') localStorage.setItem(k, v); } catch { /* opaque origin / disabled */ } };
+
+function seed(project) {
   project.add(new ITEM_TYPES.planes({
     name: 'bedding', style: { color: PALETTE[0], width: 1 },
     measurements: [[120, 35], [125, 40], [118, 32], [130, 38], [122, 42], [127, 36], [115, 30], [124, 41]],
@@ -38,6 +41,15 @@ export function mountApp(root) {
     name: 'joints', style: { color: PALETTE[1], size: 4 },
     measurements: [[210, 78], [214, 82], [206, 75], [218, 80], [203, 84], [212, 71]],
   }));
+}
+
+export function mountApp(root) {
+  const project = new Project();
+  // restore the last session if one was saved, else seed the demo data
+  let restored = false;
+  const saved = lsGet(LS_KEY);
+  if (saved) { try { loadProject(project, JSON.parse(saved)); restored = project.items().length > 0; } catch { /* corrupt → seed */ } }
+  if (!restored) seed(project);
 
   const [selected, setSelected] = signal(project.items()[0] || null);
   const [theme, setTheme] = signal('light');
@@ -50,6 +62,28 @@ export function mountApp(root) {
   const rose = new RoseRenderer(project, { size: 300 });
   const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 300 });
   effect(() => { net.render(); rose.render(); fabric.render(); });
+
+  // ── persistence: autosave to localStorage; explicit save/open as a file ──
+  effect(() => {
+    const its = project.items();
+    its.forEach((it) => { it.measurements(); it.style(); it.params(); it.layers(); it.columns(); it.name(); it.visible(); });
+    project.projection(); project.roseBinWidth();           // subscribe to all state
+    lsSet(LS_KEY, JSON.stringify(serializeProject(project)));
+  });
+  const saveProject = () => {
+    const blob = new Blob([JSON.stringify(serializeProject(project), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'project.osjs.json';
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  const openInput = document.createElement('input');
+  openInput.type = 'file'; openInput.accept = '.json,.osjs,application/json';
+  openInput.onchange = async () => {
+    const f = openInput.files && openInput.files[0]; if (!f) return;
+    try { loadProject(project, JSON.parse(await f.text())); setSelected(project.items()[0] || null); }
+    catch (e) { console.error('open project failed', e); }
+    openInput.value = '';
+  };
 
   // ── per-item stylesheet ──
   // Opacity, line-style and open/filled markers ride on CSS keyed to a `ds-<id>`
@@ -457,8 +491,14 @@ export function mountApp(root) {
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <button class=${() => (pick() ? 'btn on' : 'btn')} title="click the net to add a measurement to the selected set"
         onclick=${() => { const v = !pick(); setPick(v); net.setPickMode(v); }}>pick</button>
-      <button class="btn" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
-      <button class="btn" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: 2, background: '#ffffff' })}>PNG</button>
+      <div class="grp">
+        <button class="seg" title="open an OSJS project file" onclick=${() => openInput.click()}>open</button>
+        <button class="seg" title="save the project to a file" onclick=${saveProject}>save</button>
+      </div>
+      <div class="grp">
+        <button class="seg" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
+        <button class="seg" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: 2, background: '#ffffff' })}>PNG</button>
+      </div>
       <button class="btn icon" title="toggle theme" onclick=${() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>${() => (theme() === 'dark' ? '☀' : '☾')}</button>
     </header>
     <div class="body">

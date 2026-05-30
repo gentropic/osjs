@@ -31,6 +31,8 @@ test('app mounts without throwing and builds the three regions', () => {
   assert.ok(root.querySelector('.side'), 'data rail present');
   assert.ok(root.querySelector('.main'), 'plot area present');
   assert.ok(root.querySelector('.inspector'), 'inspector present');
+  const headerBtns = [...root.querySelectorAll('.topbar button')].map((b) => (b.textContent || '').trim().toLowerCase());
+  assert.ok(headerBtns.includes('save') && headerBtns.includes('open'), 'save/open project controls present');
 });
 
 test('inspector sections render IN ORDER, each owning its own controls', () => {

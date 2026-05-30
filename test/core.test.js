@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, serializeProject, loadProject } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
 import { parsePairs, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
@@ -136,6 +136,39 @@ test('ramp colour-by: numeric column drives colour + legend range', () => {
   assert.ok(/^rgb\(/.test(pts[0].style.color) && pts[0].style.color !== pts[2].style.color);
   const legend = ps.colorLegend();
   assert.deepEqual([legend.type, legend.min, legend.max], ['ramp', 0, 1]);
+});
+
+test('project round-trips through serialize → load (geometry, style, columns, layers, params)', () => {
+  const a = new Project();
+  const ps = a.add(new PlaneSet({ name: 'bedding', measurements: [[120, 35], [130, 40]], style: { color: '#abc123', opacity: 0.5 } }));
+  ps.toggleLayer('poles'); ps.toggleLayer('contours'); ps.setParams({ cLevels: 6, cMethod: 'kamb' });
+  a.add(new PoleSet({
+    name: 'joints', measurements: [[210, 65], [220, 60]],
+    columns: [{ name: 'set', values: ['A', 'B'] }], style: { colorMode: 'categorical', colorBy: 0 },
+  }));
+  a.setProjection('equal-angle'); a.setRoseBinWidth(15);
+
+  const json = JSON.parse(JSON.stringify(serializeProject(a)));   // prove it is JSON-able
+  const b = new Project();
+  loadProject(b, json);
+
+  assert.equal(b.projection(), 'equal-angle');
+  assert.equal(b.roseBinWidth(), 15);
+  assert.equal(b.items().length, 2);
+  const [bed, jts] = b.items();
+  assert.equal(bed.type, 'planes');
+  assert.deepEqual(bed.currentMeasurements(), [[120, 35], [130, 40]]);
+  assert.equal(bed.currentStyle().color, '#abc123');
+  assert.equal(bed.currentLayers().poles, true);
+  assert.equal(bed.currentLayers().contours, true);
+  assert.equal(bed.currentParams().cLevels, 6);
+  assert.equal(bed.currentParams().cMethod, 'kamb');
+  assert.equal(jts.colorLegend().type, 'categorical');   // colour-by survives
+  assert.deepEqual(jts.currentColumns()[0].values, ['A', 'B']);
+});
+
+test('loadProject rejects a non-project object', () => {
+  assert.throws(() => loadProject(new Project(), { hello: 'world' }), /not an OSJS project/);
 });
 
 test('parsePairs is forgiving (space/comma/slash, comments)', () => {

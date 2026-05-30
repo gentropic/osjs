@@ -76,9 +76,10 @@ export class DataItem {
     this.setStyle = (v) => { this._sv = v; setStyleSig(v); };
     this.currentStyle = () => this._sv;
 
-    // layers — toggleable render-elements, defaulted per type
+    // layers — toggleable render-elements, defaulted per type (opts.layers overrides)
     this._lv = {};
     for (const L of this.constructor.LAYERS || []) this._lv[L.key] = !!L.default;
+    if (opts.layers) this._lv = { ...this._lv, ...opts.layers };
     const [layers, setLayersSig] = signal(this._lv);
     this.layers = layers;
     this.currentLayers = () => this._lv;
@@ -258,4 +259,39 @@ export class Project {
     for (const it of this.items()) if (it.visible()) out.push(...it.contribute(space));
     return out;
   }
+}
+
+const PROJECT_FORMAT = 'osjs-project';
+
+/** Full project state → a plain JSON-able object (untracked snapshots). */
+export function serializeProject(project) {
+  return {
+    format: PROJECT_FORMAT,
+    version: 1,
+    projection: project.projection(),
+    roseBinWidth: project.roseBinWidth(),
+    items: project.items().map((it) => ({
+      type: it.type,
+      name: it.currentName(),
+      visible: it.currentVisible(),
+      measurements: it.currentMeasurements(),
+      columns: it.currentColumns(),
+      style: it.currentStyle(),
+      params: it.currentParams(),
+      layers: it.currentLayers(),
+    })),
+  };
+}
+
+/** Rebuild a project's items + settings from serializeProject() output. */
+export function loadProject(project, data) {
+  if (!data || data.format !== PROJECT_FORMAT) throw new Error('not an OSJS project file');
+  if (data.projection) project.setProjection(data.projection);
+  if (data.roseBinWidth) project.setRoseBinWidth(data.roseBinWidth);
+  const items = (data.items || []).map((d) => new (ITEM_TYPES[d.type] || PlaneSet)({
+    name: d.name, visible: d.visible, measurements: d.measurements,
+    columns: d.columns, style: d.style, params: d.params, layers: d.layers,
+  }));
+  project.setItems(items);
+  return items;
 }
