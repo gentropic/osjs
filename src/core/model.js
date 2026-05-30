@@ -145,18 +145,19 @@ export class DataItem {
     return null;
   }
 
+  // Per-type primitive geometry (points / great circles / small circles).
+  // Subclasses override; default plots each direction as a point marker.
+  _geometry(out, L, dStyle, src, d) {
+    if (L.points !== false) d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
+  }
+
   // Layer-aware geometric contribution (shared by all item types).
   _net() {
     const L = this.layers(), st = this.style(), P = this.params(), d = this.dcos(), out = [];
     const src = (i) => ({ item: this.id, datum: i });
     const colorFn = this._colorFn();
     const dStyle = (i) => (st.colorMode === 'ramp' || st.colorMode === 'categorical') ? { ...st, color: colorFn(i) } : st;
-    if (this.type === 'planes') {
-      if (L.great) d.forEach((p, i) => out.push(greatCircle(p, dStyle(i), src(i))));
-      if (L.poles) d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
-    } else if (L.points !== false) {
-      d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
-    }
+    this._geometry(out, L, dStyle, src, d);
     // density — method / smoothing / levels are tunable per item
     const dOpts = { method: P.cMethod };
     if (P.cSigma) dOpts.sigma = P.cSigma;
@@ -214,8 +215,13 @@ const COMMON_LAYERS = [
 export class PlaneSet extends DataItem {
   _convert([dd, dip]) { return conversions.planeToDcos(dd, dip); }
   _azimuths() { return this.measurements().map(([dd]) => (dd - 90 + 360) % 360); }
+  _geometry(out, L, dStyle, src, d) {
+    if (L.great) d.forEach((p, i) => out.push(greatCircle(p, dStyle(i), src(i))));
+    if (L.poles) d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
+  }
 }
 PlaneSet.kind = 'planes';
+PlaneSet.GEOM = ['dip dir', 'dip'];
 PlaneSet.LAYERS = [
   { key: 'great', label: 'great circles', default: true },
   { key: 'poles', label: 'poles', default: false },
@@ -227,6 +233,7 @@ export class PoleSet extends DataItem {
   _azimuths() { return this.measurements().map(([dd]) => (dd - 90 + 360) % 360); }
 }
 PoleSet.kind = 'poles';
+PoleSet.GEOM = ['dip dir', 'dip'];
 PoleSet.LAYERS = [{ key: 'points', label: 'points', default: true }, ...COMMON_LAYERS];
 
 export class LineSet extends DataItem {
@@ -234,9 +241,28 @@ export class LineSet extends DataItem {
   _azimuths() { return this.measurements().map(([t]) => ((t % 360) + 360) % 360); }
 }
 LineSet.kind = 'lines';
+LineSet.GEOM = ['trend', 'plunge'];
 LineSet.LAYERS = [{ key: 'points', label: 'points', default: true }, ...COMMON_LAYERS];
 
-export const ITEM_TYPES = { planes: PlaneSet, poles: PoleSet, lines: LineSet };
+// Small circles: each datum is [trend, plunge, aperture°] — an axis + a cone.
+export class SmallCircleSet extends DataItem {
+  _convert([t, p]) { return conversions.lineToDcos(t, p); }     // axis (aperture ignored)
+  _azimuths() { return this.measurements().map(([t]) => ((t % 360) + 360) % 360); }
+  _geometry(out, L, dStyle, src) {
+    const d = this.dcos();
+    if (L.axes) d.forEach((ax, i) => out.push(point(ax, dStyle(i), src(i))));
+    if (L.circles) this.measurements().forEach(([t, p, a], i) => out.push(smallCircle(d[i], (a ?? 30), dStyle(i), src(i))));
+  }
+}
+SmallCircleSet.kind = 'smallcircle';
+SmallCircleSet.GEOM = ['trend', 'plunge', 'aperture'];
+SmallCircleSet.LAYERS = [
+  { key: 'axes', label: 'axes', default: true },
+  { key: 'circles', label: 'small circles', default: true },
+  ...COMMON_LAYERS,
+];
+
+export const ITEM_TYPES = { planes: PlaneSet, poles: PoleSet, lines: LineSet, smallcircle: SmallCircleSet };
 
 // ── tree: groups (nestable folders) hold data items and other groups ──
 let _gseq = 0;

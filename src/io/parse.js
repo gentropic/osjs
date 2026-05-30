@@ -20,6 +20,20 @@ export function parsePairs(text) {
   return out;
 }
 
+/** Parse `<trend> <plunge> <aperture>` triples (for small circles). */
+export function parseTriples(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/[#;].*$/, '').trim();
+    if (!line) continue;
+    const m = line.split(/[\s,/]+/).filter(Boolean);
+    if (m.length < 3) continue;
+    const t = parseFloat(m[0]), p = parseFloat(m[1]), a = parseFloat(m[2]);
+    if (Number.isFinite(t) && Number.isFinite(p) && Number.isFinite(a)) out.push([t, p, a]);
+  }
+  return out;
+}
+
 // Pick the delimiter of a tabular line: comma / tab / semicolon by frequency,
 // else null (meaning whitespace-separated).
 function pickDelim(line) {

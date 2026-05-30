@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
-import { parsePairs, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
+import { parsePairs, parseTriples, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
 test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
@@ -136,6 +136,23 @@ test('ramp colour-by: numeric column drives colour + legend range', () => {
   assert.ok(/^rgb\(/.test(pts[0].style.color) && pts[0].style.color !== pts[2].style.color);
   const legend = ps.colorLegend();
   assert.deepEqual([legend.type, legend.min, legend.max], ['ramp', 0, 1]);
+});
+
+test('small circles contribute an axis point + a cone per datum (aperture as angle)', () => {
+  const sc = new SmallCircleSet({ measurements: [[120, 40, 25], [300, 10, 15]] });
+  const prims = sc.contribute('net');
+  const axes = prims.filter((p) => p.kind === 'point');
+  const cones = prims.filter((p) => p.kind === 'smallCircle');
+  assert.equal(axes.length, 2);
+  assert.equal(cones.length, 2);
+  assert.deepEqual(cones.map((c) => c.angle), [25, 15]);   // aperture drives the cone half-angle
+  sc.toggleLayer('axes');                                    // turn axes off
+  assert.equal(sc.contribute('net').filter((p) => p.kind === 'point').length, 0);
+  assert.equal(SmallCircleSet.GEOM.length, 3);              // trend / plunge / aperture
+});
+
+test('parseTriples reads trend/plunge/aperture rows', () => {
+  assert.deepEqual(parseTriples('120 40 25\n300,10,15\n# c\nbad 1'), [[120, 40, 25], [300, 10, 15]]);
 });
 
 test('groups: move into a group, parentOf, and visibility cascade', () => {

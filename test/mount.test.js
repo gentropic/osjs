@@ -107,6 +107,29 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('small circles: add via the form (t/p/aperture) and the table shows 3 geometry columns', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  root.querySelector('.add').click(); await tick();
+  const typeSel = root.querySelector('.form select');
+  typeSel.value = 'smallcircle'; typeSel.dispatchEvent(new window.Event('change'));
+  const ta = root.querySelector('.form .ta');
+  ta.value = '120 40 25\n300 10 15'; ta.dispatchEvent(new window.Event('input'));
+  await tick();
+  assert.equal(root.querySelectorAll('.mapping select').length, 0, 'no az/dip mapping for small circles (positional triples)');
+  root.querySelector('.form .go').click();
+  const item = project.items().at(-1);
+  assert.equal(item.type, 'smallcircle');
+  assert.deepEqual(item.currentMeasurements(), [[120, 40, 25], [300, 10, 15]]);
+
+  // its contribution draws cones; the table header has trend/plunge/aperture
+  assert.ok(item.contribute('net').some((p) => p.kind === 'smallCircle'));
+  [...root.querySelectorAll('.tabs .tab')].find((t) => /table/i.test(t.textContent)).click();
+  await tick();
+  const headers = [...root.querySelectorAll('.dtable .th')].map((e) => (e.textContent || '').trim());
+  assert.ok(headers.includes('trend') && headers.includes('plunge') && headers.includes('aperture'), `3 geometry columns (got ${headers.join(',')})`);
+});
+
 test('groups: a group nests items in the tree and gates their visibility', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);

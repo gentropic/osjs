@@ -19,7 +19,7 @@ import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup } from '../
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
-import { parsePairs, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
+import { parsePairs, parseTriples, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
 
 const { conversions, color } = bearing;
 const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
@@ -113,8 +113,10 @@ export function mountApp(root) {
   net.onPick = (d) => {
     const it = selected();
     if (!it || isGroup(it)) return;
-    const pair = it.type === 'lines' ? conversions.dcosToLine(d) : conversions.dcosToPlane(d);
-    it.setMeasurements([...it.measurements(), [Math.round(pair[0]), Math.round(pair[1])]]);
+    const lineLike = it.type === 'lines' || it.type === 'smallcircle';
+    const [a, b] = lineLike ? conversions.dcosToLine(d) : conversions.dcosToPlane(d);
+    const datum = it.type === 'smallcircle' ? [Math.round(a), Math.round(b), 30] : [Math.round(a), Math.round(b)];
+    it.setMeasurements([...it.measurements(), datum]);
   };
   effect(() => document.body.classList.toggle('theme-dark', theme() === 'dark'));
 
@@ -209,7 +211,8 @@ export function mountApp(root) {
     const nm = h`<input class="ni" placeholder="name">`;
     const typeSel = h`<select onchange=${(e) => type[1](e.target.value)}>
         <option value="planes">planes (great circles)</option>
-        <option value="poles">poles</option><option value="lines">lines</option></select>`;
+        <option value="poles">poles</option><option value="lines">lines</option>
+        <option value="smallcircle">small circles (t/p/aperture)</option></select>`;
     const fileIn = document.createElement('input');
     fileIn.type = 'file'; fileIn.accept = '.csv,.tsv,.txt,.dat'; fileIn.className = 'file';
     fileIn.onchange = async () => {
@@ -229,7 +232,7 @@ export function mountApp(root) {
     const mapHost = document.createElement('div');
     effect(() => {
       const tbl = table();
-      if (!tbl || tbl.columns.length <= 2) { mapHost.replaceChildren(); return; }
+      if (!tbl || tbl.columns.length <= 2 || type[0]() === 'smallcircle') { mapHost.replaceChildren(); return; }
       const fld = (label, sel) => h`<label class="mrow"><span class="fk">${label}</span>${sel}</label>`;
       mapHost.replaceChildren(h`<div class="mapping">
         <div class="mhint">${tbl.columns.length} columns · ${tbl.rows.length} rows</div>
@@ -244,7 +247,11 @@ export function mountApp(root) {
       const color = PALETTE[project.items().length % PALETTE.length];
       const tbl = table();
       let payload;
-      if (tbl && tbl.columns.length > 2) {
+      if (type[0]() === 'smallcircle') {
+        const triples = parseTriples(ta.value);
+        if (!triples.length) { setAdding(false); return; }
+        payload = { measurements: triples, style: { color, width: 1, size: 4 } };
+      } else if (tbl && tbl.columns.length > 2) {
         const built = buildFromTable(tbl, map);
         if (!built.measurements.length) { setAdding(false); return; }
         const style = { color, width: 1, size: 4 };
@@ -354,6 +361,14 @@ export function mountApp(root) {
     if (item.type === 'planes') {
       return h`<div class="psec"><div class="istit">lines / poles</div>
         ${field('color', colorCtl)}
+        ${field('line width', num(st.width ?? 1, 0.2, 4, 0.2, (e) => set({ width: +e.target.value })))}
+        ${field('line style', styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']]))}
+        ${field('opacity', opacityCtl)}</div>`;
+    }
+    if (item.type === 'smallcircle') {
+      return h`<div class="psec"><div class="istit">axes / circles</div>
+        ${field('color', colorCtl)}
+        ${field('axis size', num(st.size ?? 4, 1, 12, 0.5, (e) => set({ size: +e.target.value })))}
         ${field('line width', num(st.width ?? 1, 0.2, 4, 0.2, (e) => set({ width: +e.target.value })))}
         ${field('line style', styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']]))}
         ${field('opacity', opacityCtl)}</div>`;
@@ -472,13 +487,13 @@ export function mountApp(root) {
   // through to the model (read untracked here) so they don't rebuild + lose focus.
   effect(() => { tableVer(); const it = selected(); tableHost.replaceChildren(it && !isGroup(it) ? dataTable(it, tableEdit()) : h`<div class="muted">${() => (isGroup(selected()) ? 'groups have no data table' : 'no dataset selected')}</div>`); });
   function dataTable(item, edit) {
-    const geom = item.type === 'lines' ? ['trend', 'plunge'] : ['dip dir', 'dip'];
+    const geom = item.constructor.GEOM || ['a', 'b'];
     const cols = item.currentColumns();
     const meas = item.currentMeasurements();
     const setMeas = (i, k, v) => { const n = parseFloat(v); if (!Number.isFinite(n)) return; const m = item.currentMeasurements().map((r) => r.slice()); m[i][k] = n; item.setMeasurements(m); };
     const setCell = (ci, i, v) => { const c = item.currentColumns().map((co) => ({ name: co.name, values: co.values.slice() })); c[ci].values[i] = v; item.setColumns(c); };
     const renameCol = (ci, v) => { const c = item.currentColumns().map((co) => ({ name: co.name, values: co.values })); c[ci].name = v; item.setColumns(c); };
-    const addRow = () => { item.setMeasurements([...item.currentMeasurements(), [0, 0]]); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }))); bumpTable(); };
+    const addRow = () => { item.setMeasurements([...item.currentMeasurements(), geom.map(() => 0)]); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }))); bumpTable(); };
     const addCol = () => { const n = item.currentColumns().length + 1; item.setColumns([...item.currentColumns(), { name: `col${n}`, values: item.currentMeasurements().map(() => '') }]); bumpTable(); };
     const delRow = (i) => { item.setMeasurements(item.currentMeasurements().filter((_, j) => j !== i)); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: co.values.filter((_, j) => j !== i) }))); bumpTable(); };
     const cell = (val, onInput) => edit ? h`<input class="tc" value=${val} oninput=${(e) => onInput(e.target.value)}>` : h`<span>${val}</span>`;
@@ -487,18 +502,18 @@ export function mountApp(root) {
     // hoists interpolated <tr>s out of the table); use a CSS-grid of <div>s, and
     // emit every cell in ONE array (adjacent array interpolations would collide).
     const cells = [
-      h`<div class="th rownum">#</div>`, h`<div class="th">${geom[0]}</div>`, h`<div class="th">${geom[1]}</div>`,
+      h`<div class="th rownum">#</div>`,
+      ...geom.map((g) => h`<div class="th">${g}</div>`),
       ...cols.map((c, ci) => h`<div class="th">${edit ? h`<input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}>` : h`<span>${c.name}</span>`}</div>`),
       ...(edit ? [h`<div class="th tdel"></div>`] : []),
     ];
     meas.forEach((m, i) => {
       cells.push(h`<div class="td rownum">${i + 1}</div>`);
-      cells.push(h`<div class="td">${cell(m[0], (v) => setMeas(i, 0, v))}</div>`);
-      cells.push(h`<div class="td">${cell(m[1], (v) => setMeas(i, 1, v))}</div>`);
+      geom.forEach((g, k) => cells.push(h`<div class="td">${cell(m[k], (v) => setMeas(i, k, v))}</div>`));
       cols.forEach((c, ci) => cells.push(h`<div class="td">${cell(c.values[i] ?? '', (v) => setCell(ci, i, v))}</div>`));
       if (edit) cells.push(h`<div class="td tdel"><button class="rm" title="delete row" onclick=${() => delRow(i)}>×</button></div>`);
     });
-    const grid = `44px repeat(${2 + cols.length}, minmax(72px, 1fr))${edit ? ' 34px' : ''}`;
+    const grid = `44px repeat(${geom.length + cols.length}, minmax(72px, 1fr))${edit ? ' 34px' : ''}`;
     return h`<div class="tablebox">
       <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
