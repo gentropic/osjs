@@ -91,6 +91,32 @@
               repeating-linear-gradient(90deg, transparent 0 23px, var(--canvas-grid) 23px 24px),
               var(--canvas-bg); }
     .plotwrap { position: absolute; inset: 0; align-items: center; justify-content: center; }
+    /* data table tab */
+    .tablewrap { align-items: stretch; justify-content: flex-start; padding: 14px; }
+    .tablebox { display: flex; flex-direction: column; gap: 8px; width: 100%; height: 100%; min-height: 0; }
+    .thead-row { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .tcount { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+    .thead-row .btn, .ttoolbar { margin-left: 0; }
+    .thead-row > .btn { margin-left: auto; }
+    .ttoolbar { display: flex; gap: 6px; }
+    .mini { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--panel); color: var(--ink-dim); cursor: pointer; }
+    .mini:hover { color: var(--ink); border-color: var(--ink-dim); }
+    .tscroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+    /* div-based grid table (real <table> can't survive sideact's template parser) */
+    .dtable { display: grid; align-content: start; font-family: var(--mono); font-size: 12px; width: max-content; min-width: 100%; }
+    .dtable .th, .dtable .td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+                padding: 3px 8px; white-space: nowrap; overflow: hidden; display: flex; align-items: center; }
+    .dtable .th { position: sticky; top: 0; background: var(--panel); color: var(--ink-dim); font-weight: 600; z-index: 1; }
+    .dtable .rownum { color: var(--ink-faint); justify-content: flex-end; }
+    .dtable .td.rownum { position: sticky; left: 0; background: var(--panel-2); }
+    .dtable .th.rownum { left: 0; z-index: 2; }
+    .dtable input.tc, .dtable input.thi { font: inherit; width: 100%; min-width: 56px; border: 1px solid transparent;
+                background: transparent; color: var(--ink); padding: 1px 3px; border-radius: 3px; }
+    .dtable input.tc:focus, .dtable input.thi:focus { border-color: var(--line-2); background: var(--panel); outline: none; }
+    .dtable input.thi { font-weight: 600; color: var(--ink-dim); }
+    .dtable .tdel { padding: 0; justify-content: center; }
+    .dtable .tdel .rm { border: 0; background: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; }
+    .dtable .tdel .rm:hover { color: #d24b6b; }
     .plotwrap svg { width: min(70vh, 560px); height: auto; filter: drop-shadow(0 1px 6px rgba(40,55,75,.10)); }
     /* net legend overlay */
     .netlegend { position: absolute; left: 14px; bottom: 14px; max-width: 46%; pointer-events: none; }

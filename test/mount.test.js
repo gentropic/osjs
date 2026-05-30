@@ -104,3 +104,32 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   const legendCats = [...root.querySelectorAll('.netlegend .lgcat')].map((e) => (e.textContent || '').trim());
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
+
+test('table tab: shows the selected item and edits write through to the model', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const item = project.items()[0];                    // bedding (8 planes)
+  [...root.querySelectorAll('.tabs .tab')].find((t) => /table/i.test(t.textContent)).click();
+  await tick();
+  const rowCount = () => root.querySelectorAll('.dtable .td.rownum').length;  // one row-number cell per row
+  assert.equal(rowCount(), item.measurements().length, 'a row per measurement');
+
+  // enter edit mode → add a row
+  const editBtn = [...root.querySelectorAll('.thead-row .btn')].find((b) => /edit/i.test(b.textContent));
+  editBtn.click(); await tick();
+  const n0 = item.measurements().length;
+  [...root.querySelectorAll('.ttoolbar .mini')].find((b) => /row/i.test(b.textContent)).click();
+  await tick();
+  assert.equal(item.measurements().length, n0 + 1, 'add row appends a measurement');
+
+  // edit the first azimuth cell → model updates without a rebuild
+  const firstInput = root.querySelector('.dtable input.tc');
+  firstInput.value = '999'; firstInput.dispatchEvent(new window.Event('input'));
+  assert.equal(item.currentMeasurements()[0][0], 999, 'cell edit writes through to measurements');
+
+  // add a column
+  [...root.querySelectorAll('.ttoolbar .mini')].find((b) => /column/i.test(b.textContent)).click();
+  await tick();
+  assert.equal(item.currentColumns().length, 1, 'add column adds an aligned column');
+  assert.equal(item.currentColumns()[0].values.length, item.measurements().length, 'new column aligned to rows');
+});

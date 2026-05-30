@@ -384,10 +384,55 @@ export function mountApp(root) {
     if (vis.length) legendHost.replaceChildren(h`<div class="lg">${vis.map(legendRow)}</div>`);
     else legendHost.replaceChildren();
   });
+  // ── data table (selected item) with toggleable edit mode ──
+  const [tableEdit, setTableEdit] = signal(false);
+  const [tableVer, setTableVer] = signal(0);
+  const bumpTable = () => setTableVer((v) => v + 1);
+  const tableHost = document.createElement('div');
+  // Rebuilds on selection / edit-mode / structural change only — cell edits write
+  // through to the model (read untracked here) so they don't rebuild + lose focus.
+  effect(() => { tableVer(); const it = selected(); tableHost.replaceChildren(it ? dataTable(it, tableEdit()) : h`<div class="muted">no dataset selected</div>`); });
+  function dataTable(item, edit) {
+    const geom = item.type === 'lines' ? ['trend', 'plunge'] : ['dip dir', 'dip'];
+    const cols = item.currentColumns();
+    const meas = item.currentMeasurements();
+    const setMeas = (i, k, v) => { const n = parseFloat(v); if (!Number.isFinite(n)) return; const m = item.currentMeasurements().map((r) => r.slice()); m[i][k] = n; item.setMeasurements(m); };
+    const setCell = (ci, i, v) => { const c = item.currentColumns().map((co) => ({ name: co.name, values: co.values.slice() })); c[ci].values[i] = v; item.setColumns(c); };
+    const renameCol = (ci, v) => { const c = item.currentColumns().map((co) => ({ name: co.name, values: co.values })); c[ci].name = v; item.setColumns(c); };
+    const addRow = () => { item.setMeasurements([...item.currentMeasurements(), [0, 0]]); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }))); bumpTable(); };
+    const addCol = () => { const n = item.currentColumns().length + 1; item.setColumns([...item.currentColumns(), { name: `col${n}`, values: item.currentMeasurements().map(() => '') }]); bumpTable(); };
+    const delRow = (i) => { item.setMeasurements(item.currentMeasurements().filter((_, j) => j !== i)); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: co.values.filter((_, j) => j !== i) }))); bumpTable(); };
+    const cell = (val, onInput) => edit ? h`<input class="tc" value=${val} oninput=${(e) => onInput(e.target.value)}>` : h`<span>${val}</span>`;
+
+    // A real <table> can't be built via the template (HTML foster-parenting
+    // hoists interpolated <tr>s out of the table); use a CSS-grid of <div>s, and
+    // emit every cell in ONE array (adjacent array interpolations would collide).
+    const cells = [
+      h`<div class="th rownum">#</div>`, h`<div class="th">${geom[0]}</div>`, h`<div class="th">${geom[1]}</div>`,
+      ...cols.map((c, ci) => h`<div class="th">${edit ? h`<input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}>` : h`<span>${c.name}</span>`}</div>`),
+      ...(edit ? [h`<div class="th tdel"></div>`] : []),
+    ];
+    meas.forEach((m, i) => {
+      cells.push(h`<div class="td rownum">${i + 1}</div>`);
+      cells.push(h`<div class="td">${cell(m[0], (v) => setMeas(i, 0, v))}</div>`);
+      cells.push(h`<div class="td">${cell(m[1], (v) => setMeas(i, 1, v))}</div>`);
+      cols.forEach((c, ci) => cells.push(h`<div class="td">${cell(c.values[i] ?? '', (v) => setCell(ci, i, v))}</div>`));
+      if (edit) cells.push(h`<div class="td tdel"><button class="rm" title="delete row" onclick=${() => delRow(i)}>×</button></div>`);
+    });
+    const grid = `44px repeat(${2 + cols.length}, minmax(72px, 1fr))${edit ? ' 34px' : ''}`;
+    return h`<div class="tablebox">
+      <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
+        ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
+        <button class=${() => (tableEdit() ? 'btn on' : 'btn')} onclick=${() => setTableEdit((v) => !v)}>edit</button></div>
+      <div class="tscroll"><div class="dtable" style=${{ gridTemplateColumns: grid }}>${cells}</div></div>
+    </div>`;
+  }
+
   const wraps = {
     net: h`<div class="plotwrap">${net.element}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
+    table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
   };
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; });
 
@@ -423,8 +468,8 @@ export function mountApp(root) {
         ${addHost}
       </aside>
       <main class="main">
-        <div class="tabs">${tab('net', 'projection')}${tab('rose', 'rose')}${tab('fabric', 'fabric')}</div>
-        <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}</div>
+        <div class="tabs">${tab('net', 'projection')}${tab('rose', 'rose')}${tab('fabric', 'fabric')}${tab('table', 'table')}</div>
+        <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}${wraps.table}</div>
       </main>
       <aside class="inspector">
         <div class="sect">properties</div>

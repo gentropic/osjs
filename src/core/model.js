@@ -50,8 +50,11 @@ export class DataItem {
     this.setName = (v) => { this._nv = v; setNameSig(v); };
     this.currentName = () => this._nv;
 
-    const [measurements, setMeasurements] = signal(opts.measurements || []);
-    this.measurements = measurements; this.setMeasurements = setMeasurements;
+    this._mv = opts.measurements || [];
+    const [measurements, setMeasurementsSig] = signal(this._mv);
+    this.measurements = measurements;
+    this.setMeasurements = (v) => { this._mv = v; setMeasurementsSig(v); };
+    this.currentMeasurements = () => this._mv;
 
     // columns — optional per-measurement attributes (from CSV import), each
     // { name, values } with values aligned to measurements. Enables colour-by.
