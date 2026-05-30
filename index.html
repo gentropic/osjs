@@ -8,13 +8,55 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OSJS · stereonet</title>
   <style>
-    :root { --bg: #e9edf1; --fg: #1d2733; }
-    html[data-theme="dark"] { --bg: #0a0d11; --fg: #cad4df; }
+    :root {
+      --bg: #e9edf1; --panel: #f5f7f9; --line: #d8dee5; --ink: #1d2733;
+      --ink-soft: #5b6775; --accent: #1aa39a; --sel: #e4eef0;
+    }
+    * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
-    body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif;
-           display: flex; align-items: center; justify-content: center; padding: 16px; }
-    #osjs > svg { width: min(70vh, 560px); height: auto; }   /* the net (direct child) */
-    #osjs div svg { width: 300px; height: auto; display: block; }  /* rose / fabric panels */
+    body { background: var(--bg); color: var(--ink);
+           font-family: system-ui, -apple-system, sans-serif; font-size: 13px; }
+
+    .osjs-app { display: grid; grid-template-columns: 260px 1fr 300px; height: 100vh; }
+    .side, .aux { background: var(--panel); overflow-y: auto; }
+    .side { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .aux  { border-left: 1px solid var(--line); }
+    .main { display: flex; align-items: center; justify-content: center; padding: 16px; min-width: 0; }
+    .main svg { width: min(78vh, 620px); height: auto; }
+    .panel { padding: 10px; }
+    .panel svg { width: 260px; height: auto; display: block; }
+
+    .sect { font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--ink-soft); padding: 10px 12px 6px; display: flex; align-items: center; gap: 8px; }
+
+    .list { padding: 0 6px; }
+    .it { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 5px; cursor: pointer; }
+    .it:hover { background: #eef2f5; }
+    .it.sel { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
+    .it .sw { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; }
+    .it .nm { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .it .ty { font-size: 10px; color: var(--ink-soft); }
+    .it .rm { border: 0; background: none; color: var(--ink-soft); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+    .it .rm:hover { color: #cc3333; }
+
+    .add { margin: 8px 12px; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 5px;
+           background: none; color: var(--ink-soft); cursor: pointer; width: calc(100% - 24px); }
+    .add:hover { color: var(--ink); border-color: var(--ink-soft); }
+    .form { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .frow { display: flex; gap: 6px; }
+    .form .ta, .form .ni, .form select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+    .form .ta { width: 100%; resize: vertical; font-family: ui-monospace, monospace; }
+    .form .ni { flex: 1; min-width: 0; }
+    .form .go { background: var(--accent); color: #fff; border: 0; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+
+    .props { padding: 6px 12px 14px; }
+    .pbody { display: flex; flex-direction: column; gap: 8px; }
+    .phead { font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+    .props label { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+    .props input[type="number"] { width: 60px; font: inherit; }
+    .stat { font-family: ui-monospace, monospace; font-size: 11px; color: var(--ink-soft); }
+    .muted { color: var(--ink-soft); padding: 4px 0; }
+    .fmode { margin-left: auto; font: inherit; }
   </style>
 </head>
 <body>

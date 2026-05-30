@@ -15,7 +15,7 @@
  * over the data it has.
  */
 
-import { signal } from '../../vendor/sideact-signals.js';
+import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { point, greatCircle } from './primitives.js';
 
