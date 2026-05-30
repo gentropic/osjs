@@ -29,6 +29,7 @@ const distinct = (vals) => [...new Set(vals.map((v) => String(v)))];
 // per-eigenvector display mode) — separate from on/off layers and from style.
 const DEFAULT_PARAMS = {
   cMethod: 'fisher', cSigma: null, cLevels: 4,       // density: method, σ (auto if null), # levels
+  cRamp: 'item',                                     // density fill colour: 'item' hue, or a named scale
   meanCone: false,                                   // draw the α95 confidence cone
   eigPole: [true, true, true], eigPlane: [false, false, true], // V1..V3 as point / great circle
 };
@@ -161,7 +162,7 @@ export class DataItem {
     // density — method / smoothing / levels are tunable per item
     const dOpts = { method: P.cMethod };
     if (P.cSigma) dOpts.sigma = P.cSigma;
-    if (L.heatmap && d.length >= 3) out.push(heatmap(d, dOpts, st, { item: this.id }));
+    if (L.heatmap && d.length >= 3) out.push(heatmap(d, { ...dOpts, ramp: P.cRamp }, st, { item: this.id }));
     if (L.contours && d.length >= 3) out.push(contour(d, { ...dOpts, levels: contourLevels(P.cMethod, P.cLevels) }, st, { item: this.id }));
     // mean vector (+ optional α95 confidence cone)
     if (L.mean && d.length >= 1) {

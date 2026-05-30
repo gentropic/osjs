@@ -229,7 +229,7 @@ test('nested groups round-trip through serialize → load', () => {
 test('project round-trips through serialize → load (geometry, style, columns, layers, params)', () => {
   const a = new Project();
   const ps = a.add(new PlaneSet({ name: 'bedding', measurements: [[120, 35], [130, 40]], style: { color: '#abc123', opacity: 0.5 } }));
-  ps.toggleLayer('poles'); ps.toggleLayer('contours'); ps.setParams({ cLevels: 6, cMethod: 'kamb' });
+  ps.toggleLayer('poles'); ps.toggleLayer('contours'); ps.setParams({ cLevels: 6, cMethod: 'kamb', cRamp: 'magma' });
   a.add(new PoleSet({
     name: 'joints', measurements: [[210, 65], [220, 60]],
     columns: [{ name: 'set', values: ['A', 'B'] }], style: { colorMode: 'categorical', colorBy: 0 },
@@ -253,6 +253,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
   assert.equal(bed.currentLayers().contours, true);
   assert.equal(bed.currentParams().cLevels, 6);
   assert.equal(bed.currentParams().cMethod, 'kamb');
+  assert.equal(bed.currentParams().cRamp, 'magma');
   assert.equal(jts.colorLegend().type, 'categorical');   // colour-by survives
   assert.deepEqual(jts.currentColumns()[0].values, ['A', 'B']);
 });

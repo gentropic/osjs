@@ -12,7 +12,7 @@
 
 import * as bearing from '../../vendor/bearing.mjs';
 
-const { Stereonet, conversions, mat3 } = bearing;
+const { Stereonet, conversions, mat3, color } = bearing;
 
 // Colour rides on the SVG attribute (so it can vary per measurement for
 // colour-by-data); the host's injected `ds-<id>` stylesheet (see ui/app.js)
@@ -76,7 +76,12 @@ export class NetRenderer {
       case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, { ...lineStyle(st, item), fill: 'none', 'stroke-dasharray': '5 4' }); break; }
       case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
       case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts }); break;
-      case 'heatmap': sn.heatmap(p.dcos, { color: (t) => rgba(st.color, 0.1 + 0.8 * t), ...p.opts }); break;
+      case 'heatmap': {
+        const ramp = p.opts.ramp;
+        const colorFn = ramp && ramp !== 'item' ? (t) => color.sampleScale(ramp, t) : (t) => rgba(st.color, 0.1 + 0.8 * t);
+        sn.heatmap(p.dcos, { ...p.opts, color: colorFn });
+        break;
+      }
       // polyline / fill / raster: TODO (bearing primitive-level methods would help).
       default: break;
     }

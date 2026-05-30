@@ -357,7 +357,9 @@ export function mountApp(root) {
       ${field('show', seg(mode, setMode, [['off', 'off'], ['lines', 'lines'], ['fill', 'fill'], ['both', 'both']]))}
       ${field('method', paramSeg(item, 'cMethod', 'fisher', [['fisher', 'Fisher'], ['kamb', 'Kamb']]))}
       ${field('smoothing σ', num(P.cSigma ?? '', 2, 40, 1, (e) => item.setParams({ cSigma: +e.target.value || null }), 'auto'))}
-      ${field('levels', num(P.cLevels, 1, 8, 1, (e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })))}</div>`;
+      ${field('levels', num(P.cLevels, 1, 8, 1, (e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })))}
+      ${field('fill colormap', h`<select onchange=${(e) => item.setParams({ cRamp: e.target.value })}>
+        ${['item', ...RAMPS].map((r) => h`<option value=${r} ${(P.cRamp || 'item') === r ? 'selected' : null}>${r}</option>`)}</select>`)}</div>`;
   }
   function meanSection(item) {
     const meanRO = readout(() => { const s = item.stats(); return s ? tp(s.fisher.mean) : '—'; });
@@ -501,7 +503,16 @@ export function mountApp(root) {
       <span class="lgbar" style=${{ background: `linear-gradient(to right, ${stops.join(',')})` }}></span>
       <span class="lgrange">${fmtNum(lg.min)} – ${fmtNum(lg.max)}</span></div>`;
   }
+  function densityBar(item) {
+    const ramp = item.params().cRamp || 'item', c = item.style().color || '#888';
+    const grad = ramp === 'item'
+      ? `linear-gradient(to right, color-mix(in srgb, ${c} 12%, transparent), ${c})`
+      : `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map((t) => color.sampleScale(ramp, t)).join(',')})`;
+    return h`<div class="lgitem"><span class="lgname">${item.name()}</span>
+      <span class="lgbar" style=${{ background: grad }}></span><span class="lgrange">density</span></div>`;
+  }
   function legendRow(item) {
+    if (item.layers().heatmap) return densityBar(item);   // showing filled density → show its scale
     const lg = item.colorLegend();
     if (lg && lg.type === 'categorical') {
       return h`<div class="lgitem"><span class="lgname">${item.name()}</span><span class="lgcats">${
