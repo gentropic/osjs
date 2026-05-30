@@ -19,7 +19,7 @@ import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup } from '../
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
-import { parsePairs, parseTriples, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
+import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
 
 const { conversions, color } = bearing;
 const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
@@ -112,7 +112,7 @@ export function mountApp(root) {
   net.onHover = (d) => setCursor(d);
   net.onPick = (d) => {
     const it = selected();
-    if (!it || isGroup(it)) return;
+    if (!it || isGroup(it) || it.type === 'fault') return;   // faults need rake+sense → use the form
     const lineLike = it.type === 'lines' || it.type === 'smallcircle';
     const [a, b] = lineLike ? conversions.dcosToLine(d) : conversions.dcosToPlane(d);
     const datum = it.type === 'smallcircle' ? [Math.round(a), Math.round(b), 30] : [Math.round(a), Math.round(b)];
@@ -212,7 +212,8 @@ export function mountApp(root) {
     const typeSel = h`<select onchange=${(e) => type[1](e.target.value)}>
         <option value="planes">planes (great circles)</option>
         <option value="poles">poles</option><option value="lines">lines</option>
-        <option value="smallcircle">small circles (t/p/aperture)</option></select>`;
+        <option value="smallcircle">small circles (t/p/aperture)</option>
+        <option value="fault">faults (dd/dip/rake/sense)</option></select>`;
     const fileIn = document.createElement('input');
     fileIn.type = 'file'; fileIn.accept = '.csv,.tsv,.txt,.dat'; fileIn.className = 'file';
     fileIn.onchange = async () => {
@@ -232,7 +233,7 @@ export function mountApp(root) {
     const mapHost = document.createElement('div');
     effect(() => {
       const tbl = table();
-      if (!tbl || tbl.columns.length <= 2 || type[0]() === 'smallcircle') { mapHost.replaceChildren(); return; }
+      if (!tbl || tbl.columns.length <= 2 || type[0]() === 'smallcircle' || type[0]() === 'fault') { mapHost.replaceChildren(); return; }
       const fld = (label, sel) => h`<label class="mrow"><span class="fk">${label}</span>${sel}</label>`;
       mapHost.replaceChildren(h`<div class="mapping">
         <div class="mhint">${tbl.columns.length} columns · ${tbl.rows.length} rows</div>
@@ -251,6 +252,10 @@ export function mountApp(root) {
         const triples = parseTriples(ta.value);
         if (!triples.length) { setAdding(false); return; }
         payload = { measurements: triples, style: { color, width: 1, size: 4 } };
+      } else if (type[0]() === 'fault') {
+        const rows = parseFaults(ta.value);
+        if (!rows.length) { setAdding(false); return; }
+        payload = { measurements: rows, style: { color, width: 1, size: 4 } };
       } else if (tbl && tbl.columns.length > 2) {
         const built = buildFromTable(tbl, map);
         if (!built.measurements.length) { setAdding(false); return; }
@@ -372,6 +377,14 @@ export function mountApp(root) {
         ${field('line width', num(st.width ?? 1, 0.2, 4, 0.2, (e) => set({ width: +e.target.value })))}
         ${field('line style', styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']]))}
         ${field('opacity', opacityCtl)}</div>`;
+    }
+    if (item.type === 'fault') {
+      return h`<div class="psec"><div class="istit">fault elements</div>
+        ${field('color', colorCtl)}
+        ${field('line width', num(st.width ?? 1, 0.2, 4, 0.2, (e) => set({ width: +e.target.value })))}
+        ${field('point size', num(st.size ?? 4, 1, 12, 0.5, (e) => set({ size: +e.target.value })))}
+        ${field('opacity', opacityCtl)}
+        <div class="muted">sense codes: 0 unknown · 1 reverse · 2 normal · 3 dextral · 4 sinistral. Paleostress σ (in the layer list) is the Michael 1984 inversion — <b>experimental, treat as unvalidated</b>.</div></div>`;
     }
     return h`<div class="psec"><div class="istit">symbols</div>
       ${field('color', colorCtl)}

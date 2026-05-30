@@ -34,6 +34,26 @@ export function parseTriples(text) {
   return out;
 }
 
+// fault sense letter → numeric code (fault.resolveSense accepts both)
+const SENSE_CODE = { n: 2, '-': 2, i: 1, r: 1, '+': 1, d: 3, s: 4, u: 0, f: 0, '?': 0 };
+
+/** Parse `<dip dir> <dip> <rake> [sense]` fault rows; sense may be a letter or number. */
+export function parseFaults(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/[#].*$/, '').trim();
+    if (!line) continue;
+    const m = line.split(/[\s,/]+/).filter(Boolean);
+    if (m.length < 3) continue;
+    const dd = parseFloat(m[0]), dip = parseFloat(m[1]), rake = parseFloat(m[2]);
+    if (![dd, dip, rake].every(Number.isFinite)) continue;
+    let sense = 0;
+    if (m[3] != null) { const n = parseFloat(m[3]); sense = Number.isFinite(n) ? n : (SENSE_CODE[String(m[3]).toLowerCase()[0]] ?? 0); }
+    out.push([dd, dip, rake, sense]);
+  }
+  return out;
+}
+
 // Pick the delimiter of a tabular line: comma / tab / semicolon by frequency,
 // else null (meaning whitespace-separated).
 function pickDelim(line) {

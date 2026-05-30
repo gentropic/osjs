@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
-import { parsePairs, parseTriples, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
+import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
 test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
@@ -153,6 +153,30 @@ test('small circles contribute an axis point + a cone per datum (aperture as ang
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
   assert.deepEqual(parseTriples('120 40 25\n300,10,15\n# c\nbad 1'), [[120, 40, 25], [300, 10, 15]]);
+});
+
+test('parseFaults reads dd/dip/rake/sense (letter or numeric sense)', () => {
+  assert.deepEqual(parseFaults('120 60 80 n\n300 45 30 d\n90 70 90 1\n60 50 45'),
+    [[120, 60, 80, 2], [300, 45, 30, 3], [90, 70, 90, 1], [60, 50, 45, 0]]);   // n→2, d→3, 1→1, missing→0
+});
+
+test('faults: planes + slickenlines + P/T axes; paleostress gated to layer + ≥4 faults', () => {
+  const f = new FaultSet({ measurements: [[120, 60, 80, 2], [300, 45, 30, 1], [90, 70, 90, 2], [200, 55, 60, 1]] });
+  const base = f.contribute('net');
+  assert.equal(base.filter((p) => p.kind === 'greatCircle').length, 4);   // fault planes
+  assert.equal(base.filter((p) => p.source.slip).length, 4);              // slickenlines
+  assert.ok(!base.some((p) => p.source.stress != null), 'paleostress off by default');
+
+  f.toggleLayer('pt');
+  const pt = f.contribute('net').filter((p) => p.source.axis);
+  assert.equal(pt.length, 8);                                             // P + T per fault
+
+  f.toggleLayer('michael');
+  const sigma = f.contribute('net').filter((p) => p.source.stress != null);
+  assert.equal(sigma.length, 3);                                          // σ1 σ2 σ3
+  // fewer than 4 defined faults → no inversion
+  const few = new FaultSet({ measurements: [[120, 60, 80, 2]] }); few.toggleLayer('michael');
+  assert.equal(few.contribute('net').filter((p) => p.source.stress != null).length, 0);
 });
 
 test('groups: move into a group, parentOf, and visibility cascade', () => {

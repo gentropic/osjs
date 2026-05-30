@@ -18,7 +18,7 @@ import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
-const { conversions, statistics, color } = bearing;
+const { conversions, statistics, color, fault } = bearing;
 const { meanVector, principalAxes, fisherStats } = statistics;
 
 // categorical palette for colour-by-class (distinct, print-friendly)
@@ -262,7 +262,59 @@ SmallCircleSet.LAYERS = [
   ...COMMON_LAYERS,
 ];
 
-export const ITEM_TYPES = { planes: PlaneSet, poles: PoleSet, lines: LineSet, smallcircle: SmallCircleSet };
+// Faults: self-contained datum [dip dir, dip, rake, sense]. sense codes (numeric,
+// passed straight to fault.resolveSense): 0 unknown · 1 reverse · 2 normal ·
+// 3 dextral · 4 sinistral. dcos() = fault-plane poles (for fabric/eigen/density).
+export class FaultSet extends DataItem {
+  _convert([dd, dip]) { return conversions.planeToDcos(dd, dip); }
+  _azimuths() { return this.measurements().map(([dd]) => (dd - 90 + 360) % 360); }
+
+  // per-fault kinematics: normal, slickenline, resolved slip vector, P/T axes
+  _faults() {
+    return this.measurements().map(([dd, dip, rake, sense]) => {
+      const normal = conversions.planeToDcos(dd, dip);
+      const line = conversions.rakeToDcos(dd, dip, rake);
+      const { slip, defined } = fault.resolveSense(normal, line, sense);
+      const { p, t } = fault.ptAxes(normal, slip);
+      return { normal, line, slip, defined, p, t };
+    });
+  }
+
+  _geometry(out, L, dStyle, src) {
+    const F = this._faults(), st = this.style();
+    if (L.planes) F.forEach((f, i) => out.push(greatCircle(f.normal, dStyle(i), src(i))));
+    if (L.slip) F.forEach((f, i) => out.push(point(f.slip, dStyle(i), { item: this.id, datum: i, slip: true })));
+    if (L.pt) F.forEach((f, i) => {
+      out.push(point(f.p, { ...st, pointFill: 'filled', size: 4 }, { item: this.id, datum: i, axis: 'P' }));
+      out.push(point(f.t, { ...st, pointFill: 'open', size: 4 }, { item: this.id, datum: i, axis: 'T' }));
+    });
+    if (L.michael) this._paleostress(out);
+  }
+
+  // Michael (1984) paleostress inversion — EXPERIMENTAL / not freshly validated.
+  _paleostress(out) {
+    const F = this._faults().filter((f) => f.defined);
+    if (F.length < 4) return;                       // 5 unknowns; need enough faults
+    const { stress } = fault.michael(F.map((f) => f.normal), F.map((f) => f.slip));
+    const { axes } = fault.principalStresses(stress);   // σ1, σ2, σ3
+    const cols = ['#cc3333', '#3a9a3a', '#3a6ea8'];
+    axes.forEach((ax, k) => {
+      out.push(point(ax, { ...this.style(), color: cols[k], size: 7 }, { item: this.id, stress: k }));
+      out.push(text(ax, 'σ' + (k + 1), { dx: 7, dy: -5, fontSize: 11, fontWeight: 700, fill: cols[k] }, { item: this.id }));
+    });
+  }
+}
+FaultSet.kind = 'fault';
+FaultSet.GEOM = ['dip dir', 'dip', 'rake', 'sense'];
+FaultSet.LAYERS = [
+  { key: 'planes', label: 'fault planes', default: true },
+  { key: 'slip', label: 'slickenlines', default: true },
+  { key: 'pt', label: 'P / T axes', default: false },
+  { key: 'michael', label: 'paleostress σ (experimental)', default: false },
+  ...COMMON_LAYERS,
+];
+
+export const ITEM_TYPES = { planes: PlaneSet, poles: PoleSet, lines: LineSet, smallcircle: SmallCircleSet, fault: FaultSet };
 
 // ── tree: groups (nestable folders) hold data items and other groups ──
 let _gseq = 0;

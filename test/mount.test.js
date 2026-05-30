@@ -130,6 +130,30 @@ test('small circles: add via the form (t/p/aperture) and the table shows 3 geome
   assert.ok(headers.includes('trend') && headers.includes('plunge') && headers.includes('aperture'), `3 geometry columns (got ${headers.join(',')})`);
 });
 
+test('faults: add via the form; paleostress is gated + flagged experimental in the inspector', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  root.querySelector('.add').click(); await tick();
+  const typeSel = root.querySelector('.form select');
+  typeSel.value = 'fault'; typeSel.dispatchEvent(new window.Event('change'));
+  const ta = root.querySelector('.form .ta');
+  ta.value = '120 60 80 n\n300 45 30 i\n90 70 90 n\n200 55 60 i';
+  ta.dispatchEvent(new window.Event('input')); await tick();
+  root.querySelector('.form .go').click();
+  const f = project.items().at(-1);
+  assert.equal(f.type, 'fault');
+  assert.equal(f.currentMeasurements().length, 4);
+
+  // selected → inspector mentions the experimental paleostress caveat
+  await tick();
+  assert.match((root.querySelector('.inspector').textContent || '').toLowerCase(), /experimental|unvalidated/);
+
+  // paleostress σ axes appear only once the layer is enabled
+  assert.ok(!f.contribute('net').some((p) => p.source.stress != null));
+  f.toggleLayer('michael');
+  assert.equal(f.contribute('net').filter((p) => p.source.stress != null).length, 3);
+});
+
 test('groups: a group nests items in the tree and gates their visibility', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);
