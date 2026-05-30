@@ -351,11 +351,15 @@ export class Project {
     this.visibleLeaves = () => visibleLeavesOf(this.nodes());
     const [projection, setProjection] = signal(opts.projection || 'equal-area');
     this.projection = projection; this.setProjection = setProjection;
-    const [roseBinWidth, setRoseBinWidth] = signal(opts.roseBinWidth || 10);
-    this.roseBinWidth = roseBinWidth; this.setRoseBinWidth = setRoseBinWidth;
-    const [contourMethod, setContourMethod] = signal(opts.contourMethod || 'fisher');
-    this.contourMethod = contourMethod; this.setContourMethod = setContourMethod;
+    const mk = (key, def) => { const [g, s] = signal(opts[key] ?? def); this[key] = g; this['set' + key[0].toUpperCase() + key.slice(1)] = s; };
+    mk('roseBinWidth', 10);
+    mk('roseScale', 'area');        // 'count' (radius ∝ count) | 'area' (∝ √count, equal-area)
+    mk('rosePetalStyle', 'petals'); // 'petals' | 'kite' | 'lines'
+    mk('roseMean', false);          // draw each set's circular mean direction
+    mk('contourMethod', 'fisher');
   }
+
+  get roseSettings() { return { binWidth: this.roseBinWidth(), scale: this.roseScale(), petal: this.rosePetalStyle(), mean: this.roseMean() }; }
 
   add(item) { this.setNodes([...this.nodes(), item]); return item; }
   addGroup(name) { const g = new Group({ name: name || 'group' }); this.setNodes([...this.nodes(), g]); return g; }
@@ -420,6 +424,9 @@ export function serializeProject(project) {
     format: PROJECT_FORMAT, version: 2,
     projection: project.projection(),
     roseBinWidth: project.roseBinWidth(),
+    roseScale: project.roseScale(),
+    rosePetalStyle: project.rosePetalStyle(),
+    roseMean: project.roseMean(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -438,6 +445,9 @@ export function loadProject(project, data) {
   if (!data || data.format !== PROJECT_FORMAT) throw new Error('not an OSJS project file');
   if (data.projection) project.setProjection(data.projection);
   if (data.roseBinWidth) project.setRoseBinWidth(data.roseBinWidth);
+  if (data.roseScale) project.setRoseScale(data.roseScale);
+  if (data.rosePetalStyle) project.setRosePetalStyle(data.rosePetalStyle);
+  if (data.roseMean != null) project.setRoseMean(data.roseMean);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;

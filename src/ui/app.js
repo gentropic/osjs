@@ -475,11 +475,17 @@ export function mountApp(root) {
   }
 
   // ── settings (global, plot-level) ──
+  const projSegBtn = (get, set, v, label) => h`<button class=${() => (get() === v ? 'seg on' : 'seg')} onclick=${() => set(v)}>${label}</button>`;
   const settings = h`<div class="settings">
-    <label>rose bin <select onchange=${(e) => project.setRoseBinWidth(+e.target.value)}>
-      ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === 10 ? 'selected' : null}>${w}°</option>`)}
+    <div class="istit">rose diagram</div>
+    <label>bin width <select onchange=${(e) => project.setRoseBinWidth(+e.target.value)}>
+      ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === project.roseBinWidth() ? 'selected' : null}>${w}°</option>`)}
     </select></label>
-    <label>fabric <select onchange=${(e) => fabric.setMode(e.target.value)}>
+    <label>scale <span class="grp small">${projSegBtn(project.roseScale, project.setRoseScale, 'count', 'count')}${projSegBtn(project.roseScale, project.setRoseScale, 'area', 'equal-area')}</span></label>
+    <label>petals <span class="grp small">${projSegBtn(project.rosePetalStyle, project.setRosePetalStyle, 'petals', 'filled')}${projSegBtn(project.rosePetalStyle, project.setRosePetalStyle, 'kite', 'kite')}${projSegBtn(project.rosePetalStyle, project.setRosePetalStyle, 'lines', 'lines')}</span></label>
+    <label>mean <span class="chips">${chip('show', () => project.roseMean(), () => project.setRoseMean(!project.roseMean()))}</span></label>
+    <div class="istit">fabric</div>
+    <label>diagram <select onchange=${(e) => fabric.setMode(e.target.value)}>
       <option value="woodcock">Woodcock</option><option value="vollmer">Vollmer</option>
     </select></label>
   </div>`;
