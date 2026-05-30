@@ -72,3 +72,35 @@ test('inspector sections render IN ORDER, each owning its own controls', () => {
   assert.ok(meanRows.find(([k]) => k === 'mean vector')?.[1].match(/^\d{3}\/\d{2}$/), 'mean vector shows trend/plunge');
   assert.ok(meanRows.find(([k]) => k.includes('cone'))?.[1].endsWith('°'), 'α95 cone shows an opening angle');
 });
+
+// reactive effects re-run on a microtask, so flush after each interaction
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('CSV import: pasting a multi-column table reveals mapping + builds a coloured item', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const n0 = project.items().length;
+  root.querySelector('.add').click();                 // open the add form
+  await tick();
+  const ta = root.querySelector('.form .ta');
+  assert.ok(ta, 'add form is shown');
+  ta.value = 'dipdir,dip,set\n120,35,A\n130,40,B\n118,32,A';
+  ta.dispatchEvent(new window.Event('input'));        // triggers column detection
+  await tick();
+  const selects = [...root.querySelectorAll('.mapping select')];
+  assert.equal(selects.length, 3, 'azimuth / dip / color-by selects appear for a 3-column table');
+  selects[2].value = '2'; selects[2].dispatchEvent(new window.Event('change'));  // colour by "set"
+  root.querySelector('.form .go').click();            // add
+  const item = project.items().at(-1);
+  assert.equal(project.items().length, n0 + 1, 'one item added');
+  assert.equal(item.measurements().length, 3, 'three measurements parsed');
+  assert.equal(item.currentColumns().length, 3, 'columns carried onto the item');
+  assert.equal(item.colorLegend()?.type, 'categorical', 'colour-by-set is categorical');
+  assert.deepEqual(item.colorLegend().entries.map(([v]) => v), ['A', 'B']);
+
+  await tick();  // the new item is auto-selected → inspector rebuilds
+  const titles = [...root.querySelectorAll('.inspector .psec .istit')].map((e) => (e.textContent || '').trim());
+  assert.ok(titles.includes('color by'), 'inspector shows a color-by section for an item with columns');
+  const legendCats = [...root.querySelectorAll('.netlegend .lgcat')].map((e) => (e.textContent || '').trim());
+  assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
+});

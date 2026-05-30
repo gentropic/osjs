@@ -19,12 +19,14 @@ import { Project, ITEM_TYPES } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
-import { parsePairs } from '../io/parse.js';
+import { parsePairs, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
 
-const { conversions } = bearing;
+const { conversions, color } = bearing;
+const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
 const PALETTE = ['#1aa39a', '#e8920c', '#cc3333', '#7a5cff', '#3a9a3a', '#c060c0', '#d4548a', '#5bb8d4'];
 const az = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0');
 const p2 = (x) => String(Math.round(x)).padStart(2, '0');
+const fmtNum = (x) => (Number.isInteger(x) ? String(x) : Math.abs(x) >= 100 ? String(Math.round(x)) : x.toFixed(2));
 
 export function mountApp(root) {
   const project = new Project();
@@ -119,23 +121,82 @@ export function mountApp(root) {
   const addHost = document.createElement('div');
   effect(() => { addHost.replaceChildren(adding() ? addForm() : addButton()); });
   function addButton() { return h`<button class="add" onclick=${() => setAdding(true)}>+ add data</button>`; }
+  // an imperative column <select> (value is an IDL property, not an attribute)
+  function colSelect(cols, selected, allowNone, onChange) {
+    const s = document.createElement('select');
+    if (allowNone) { const o = document.createElement('option'); o.value = '-1'; o.textContent = '— none —'; s.appendChild(o); }
+    cols.forEach((c, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = c.name; s.appendChild(o); });
+    s.value = String(selected);
+    s.onchange = () => onChange(parseInt(s.value, 10));
+    return s;
+  }
   function addForm() {
-    const type = signal('planes'), name = signal('');
-    const ta = h`<textarea class="ta" rows="5" placeholder="120 35\n125 40\n…  dip dir / dip  ·  or trend / plunge"></textarea>`;
-    const sel = h`<select onchange=${(e) => type[1](e.target.value)}>
+    const type = signal('planes');
+    const [table, setTable] = signal(null);
+    const map = { azIdx: 0, dipIdx: 1, colorBy: -1 };  // read at commit time
+    const ta = h`<textarea class="ta" rows="5" placeholder="paste pairs (120 35) or CSV/TSV with a header row"></textarea>`;
+    const nm = h`<input class="ni" placeholder="name">`;
+    const typeSel = h`<select onchange=${(e) => type[1](e.target.value)}>
         <option value="planes">planes (great circles)</option>
         <option value="poles">poles</option><option value="lines">lines</option></select>`;
-    const nm = h`<input class="ni" placeholder="name" oninput=${(e) => name[1](e.target.value)}>`;
+    const fileIn = document.createElement('input');
+    fileIn.type = 'file'; fileIn.accept = '.csv,.tsv,.txt,.dat'; fileIn.className = 'file';
+    fileIn.onchange = async () => {
+      const f = fileIn.files && fileIn.files[0]; if (!f) return;
+      ta.value = await f.text();
+      if (!nm.value) nm.value = f.name.replace(/\.[^.]+$/, '');
+      detect();
+    };
+    const detect = () => {
+      const tbl = parseTable(ta.value);
+      if (tbl.columns.length > 2) Object.assign(map, guessRoles(tbl.columns), { colorBy: -1 });
+      setTable(tbl);
+    };
+    ta.addEventListener('input', detect);
+
+    // column-mapping UI, shown only for multi-column tables
+    const mapHost = document.createElement('div');
+    effect(() => {
+      const tbl = table();
+      if (!tbl || tbl.columns.length <= 2) { mapHost.replaceChildren(); return; }
+      const fld = (label, sel) => h`<label class="mrow"><span class="fk">${label}</span>${sel}</label>`;
+      mapHost.replaceChildren(h`<div class="mapping">
+        <div class="mhint">${tbl.columns.length} columns · ${tbl.rows.length} rows</div>
+        ${fld('azimuth', colSelect(tbl.columns, map.azIdx, false, (v) => { map.azIdx = v; }))}
+        ${fld('dip / plunge', colSelect(tbl.columns, map.dipIdx, false, (v) => { map.dipIdx = v; }))}
+        ${fld('color by', colSelect(tbl.columns, map.colorBy, true, (v) => { map.colorBy = v; }))}
+      </div>`);
+    });
+
     const commit = () => {
-      const pairs = parsePairs(ta.value);
-      if (pairs.length) {
-        const Cls = ITEM_TYPES[type[0]()] || ITEM_TYPES.planes;
-        const color = PALETTE[project.items().length % PALETTE.length];
-        setSelected(project.add(new Cls({ name: name[0]() || type[0](), style: { color, width: 1, size: 4 }, measurements: pairs })));
+      const Cls = ITEM_TYPES[type[0]()] || ITEM_TYPES.planes;
+      const color = PALETTE[project.items().length % PALETTE.length];
+      const tbl = table();
+      let payload;
+      if (tbl && tbl.columns.length > 2) {
+        const built = buildFromTable(tbl, map);
+        if (!built.measurements.length) { setAdding(false); return; }
+        const style = { color, width: 1, size: 4 };
+        if (map.colorBy >= 0) {
+          const vals = built.columns[map.colorBy].values;
+          const numeric = vals.some((v) => v !== '' && Number.isFinite(parseFloat(v)))
+            && vals.every((v) => v === '' || Number.isFinite(parseFloat(v)));
+          style.colorMode = numeric ? 'ramp' : 'categorical';
+          style.colorBy = map.colorBy;
+          if (numeric) style.colorRamp = 'viridis';
+        }
+        payload = { measurements: built.measurements, columns: built.columns, style };
+      } else {
+        const pairs = parsePairs(ta.value);
+        if (!pairs.length) { setAdding(false); return; }
+        payload = { measurements: pairs, style: { color, width: 1, size: 4 } };
       }
+      payload.name = nm.value || type[0]();
+      setSelected(project.add(new Cls(payload)));
       setAdding(false);
     };
-    return h`<div class="form"><div class="frow">${sel}${nm}</div>${ta}
+    return h`<div class="form"><div class="frow">${typeSel}${nm}</div>
+      ${fileIn}${ta}${mapHost}
       <div class="frow"><button class="go" onclick=${commit}>add</button>
       <button onclick=${() => setAdding(false)}>cancel</button></div></div>`;
   }
@@ -233,6 +294,21 @@ export function mountApp(root) {
       ${field('edge width', num(st.edgeWidth ?? 0, 0, 3, 0.2, (e) => set({ edgeWidth: +e.target.value })))}
       ${field('opacity', opacityCtl)}</div>`;
   }
+  function colorBySection(item) {
+    const cols = item.currentColumns();
+    if (!cols.length) return '';
+    const st = item.currentStyle();
+    const setS = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
+    const colSel = colSelect(cols, st.colorBy ?? 0, false, (v) => setS({ colorBy: v }));
+    const rampSel = h`<select onchange=${(e) => setS({ colorRamp: e.target.value })}>
+      ${RAMPS.map((r) => h`<option value=${r} ${(st.colorRamp || 'viridis') === r ? 'selected' : null}>${r}</option>`)}</select>`;
+    const rev = chip('reverse', () => item.style().rampReverse, () => setS({ rampReverse: !item.currentStyle().rampReverse }));
+    return h`<div class="psec"><div class="istit">color by</div>
+      ${field('mode', styleSeg(item, 'colorMode', 'single', [['single', 'single'], ['categorical', 'class'], ['ramp', 'ramp']]))}
+      ${field('column', colSel)}
+      ${field('ramp', rampSel)}
+      ${field('reverse', chips(rev))}</div>`;
+  }
   function statsSection(item) {
     const s = item.stats();
     if (!s) return h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
@@ -261,6 +337,7 @@ export function mountApp(root) {
       <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
       ${plotSection(item)}
       ${symbolSection(item)}
+      ${colorBySection(item)}
       ${densitySection(item)}
       ${meanSection(item)}
       ${eigenSection(item)}
@@ -281,8 +358,34 @@ export function mountApp(root) {
 
   // ── tabbed plots ──
   const tab = (key, label) => h`<button class=${() => (activeTab() === key ? 'tab on' : 'tab')} onclick=${() => setActiveTab(key)}>${label}</button>`;
+  // live legend overlay on the net: a swatch / class list / ramp bar per visible item
+  const legendHost = document.createElement('div');
+  legendHost.className = 'netlegend';
+  function rampBar(lg) {
+    const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color.sampleScale(lg.ramp, lg.reverse ? 1 - t : t));
+    return h`<div class="lgramp"><span class="lgname">${lg.column}</span>
+      <span class="lgbar" style=${{ background: `linear-gradient(to right, ${stops.join(',')})` }}></span>
+      <span class="lgrange">${fmtNum(lg.min)} – ${fmtNum(lg.max)}</span></div>`;
+  }
+  function legendRow(item) {
+    const lg = item.colorLegend();
+    if (lg && lg.type === 'categorical') {
+      return h`<div class="lgitem"><span class="lgname">${item.name()}</span><span class="lgcats">${
+        lg.entries.slice(0, 8).map(([v, c]) => h`<span class="lgcat"><span class="sw" style=${{ background: c }}></span>${v || '∅'}</span>`)
+      }</span></div>`;
+    }
+    if (lg && lg.type === 'ramp') {
+      return h`<div class="lgitem"><span class="lgname">${item.name()}</span>${rampBar(lg)}</div>`;
+    }
+    return h`<div class="lgitem"><span class="sw" style=${{ background: item.style().color || '#888' }}></span><span>${item.name()}</span></div>`;
+  }
+  effect(() => {
+    const vis = project.items().filter((it) => it.visible());
+    if (vis.length) legendHost.replaceChildren(h`<div class="lg">${vis.map(legendRow)}</div>`);
+    else legendHost.replaceChildren();
+  });
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}</div>`,
+    net: h`<div class="plotwrap">${net.element}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
   };

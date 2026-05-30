@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Project, PlaneSet, PoleSet, LineSet } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
-import { parsePairs } from '../src/io/parse.js';
+import { parsePairs, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
 test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
@@ -140,4 +140,22 @@ test('ramp colour-by: numeric column drives colour + legend range', () => {
 
 test('parsePairs is forgiving (space/comma/slash, comments)', () => {
   assert.deepEqual(parsePairs('120 35\n125,40\n118/32\n; comment\n  # x\nbad'), [[120, 35], [125, 40], [118, 32]]);
+});
+
+test('parseTable detects header + delimiter and yields aligned columns', () => {
+  const t = parseTable('dipdir,dip,set\n120,35,A\n130,40,B');
+  assert.deepEqual(t.columns.map((c) => c.name), ['dipdir', 'dip', 'set']);
+  assert.deepEqual(t.columns[2].values, ['A', 'B']);
+  assert.equal(t.rows.length, 2);
+  // headerless whitespace table → synthesized names
+  assert.deepEqual(parseTable('120 35\n130 40').columns.map((c) => c.name), ['col1', 'col2']);
+});
+
+test('guessRoles + buildFromTable map columns and keep alignment', () => {
+  const t = parseTable('strike\tdip\tconf\n120\t35\t0.8\n130\tbad\t0.6\n140\t50\t0.9');
+  const roles = guessRoles(t.columns);
+  assert.deepEqual(roles, { azIdx: 0, dipIdx: 1 });
+  const built = buildFromTable(t, roles);
+  assert.deepEqual(built.measurements, [[120, 35], [140, 50]]);   // bad-dip row dropped
+  assert.deepEqual(built.columns[2].values, ['0.8', '0.9']);       // conf stays aligned
 });

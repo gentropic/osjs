@@ -92,6 +92,19 @@
               var(--canvas-bg); }
     .plotwrap { position: absolute; inset: 0; align-items: center; justify-content: center; }
     .plotwrap svg { width: min(70vh, 560px); height: auto; filter: drop-shadow(0 1px 6px rgba(40,55,75,.10)); }
+    /* net legend overlay */
+    .netlegend { position: absolute; left: 14px; bottom: 14px; max-width: 46%; pointer-events: none; }
+    .lg { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; font-size: 11px;
+          background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
+          border-radius: 6px; box-shadow: 0 1px 6px rgba(40,55,75,.10); backdrop-filter: blur(2px); }
+    .lgitem { display: flex; align-items: center; gap: 7px; color: var(--ink-dim); }
+    .lgitem .sw { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,.12); }
+    .lgname { font-weight: 600; color: var(--ink); white-space: nowrap; }
+    .lgcats { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+    .lgcat { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10px; }
+    .lgramp { display: flex; align-items: center; gap: 7px; }
+    .lgbar { width: 84px; height: 9px; border-radius: 3px; border: 1px solid var(--line-2); }
+    .lgrange { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); white-space: nowrap; }
 
     /* section headers */
     .sect { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
@@ -133,6 +146,14 @@
                 padding: 5px 14px; cursor: pointer; font-weight: 600; }
     .form button:not(.go) { background: var(--panel); border: 1px solid var(--line-2); border-radius: 5px;
                 padding: 5px 12px; color: var(--ink-dim); cursor: pointer; }
+    .form .file { font: inherit; font-size: 11px; color: var(--ink-dim); }
+    .form .file::file-selector-button { font: inherit; font-size: 11px; margin-right: 8px; padding: 4px 9px;
+                background: var(--panel); color: var(--ink-dim); border: 1px solid var(--line-2); border-radius: 5px; cursor: pointer; }
+    .mapping { display: flex; flex-direction: column; gap: 6px; padding-top: 7px; border-top: 1px solid var(--line); }
+    .mhint { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+    .mrow { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 8px; color: var(--ink-dim); }
+    .mrow select { width: 100%; font: inherit; padding: 3px 5px; background: var(--panel-2);
+                color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
 
     /* properties */
     .props { padding: 8px 12px 16px; }
