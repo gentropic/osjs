@@ -165,9 +165,15 @@ export function mountApp(root) {
   // arg must be a SINGLE node — sideact's `h` mis-orders/drops nodes when a
   // multi-root fragment is interpolated. Sections wrap in one <div class="psec">
   // (display:contents) and rows go through field() for a uniform 2-column grid.
-  function field(key, control) {
-    return h`<label><span class="fk">${key}</span><span class="fv">${control}</span></label>`;
+  function field(key, control, readout) {
+    // readout (optional) is a single node, right-aligned after the control —
+    // both are single-node interpolations, so sideact orders them fine.
+    return h`<label><span class="fk">${key}</span><span class="fv">${control}${readout ?? ''}</span></label>`;
   }
+  // a reactive trend/plunge (or text) read-out; `fn` reads item signals so it
+  // updates live as data changes, without rebuilding the inputs in propsFor.
+  function readout(fn) { return h`<span class="ro">${fn}</span>`; }
+  const tp = (dcos) => { const [t, p] = conversions.dcosToLine(dcos); return `${az(t)}/${p2(p)}`; };
   function chips(...nodes) { return h`<span class="chips">${nodes}</span>`; }
   function num(value, min, max, step, onInput, placeholder) {
     return h`<input type="number" min=${min} max=${max} step=${step} placeholder=${placeholder ?? null} value=${value} oninput=${onInput}>`;
@@ -188,17 +194,20 @@ export function mountApp(root) {
       ${field('levels', num(P.cLevels, 1, 8, 1, (e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })))}</div>`;
   }
   function meanSection(item) {
+    const meanRO = readout(() => { const s = item.stats(); return s ? tp(s.fisher.mean) : '—'; });
+    const coneRO = readout(() => { const s = item.stats(); return s && s.fisher.alpha95 > 0 ? `${s.fisher.alpha95.toFixed(1)}°` : '—'; });
     return h`<div class="psec"><div class="istit">mean / confidence</div>
-      ${field('mean vector', chips(layerChip(item, 'mean', 'show')))}
-      ${field('α₉₅ cone', chips(chip('show', () => item.params().meanCone, () => item.setParams({ meanCone: !item.currentParams().meanCone }))))}</div>`;
+      ${field('mean vector', chips(layerChip(item, 'mean', 'show')), meanRO)}
+      ${field('α₉₅ cone', chips(chip('show', () => item.params().meanCone, () => item.setParams({ meanCone: !item.currentParams().meanCone }))), coneRO)}</div>`;
   }
   function eigenSection(item) {
     const cell = (i, key, label) => chip(label, () => item.params()[key][i], () => {
       const a = item.currentParams()[key].slice(); a[i] = !a[i]; item.setParams({ [key]: a });
     });
+    const eigRO = (i) => readout(() => { const s = item.stats(); return s ? tp(s.eigenvectors[i]) : '—'; });
     return h`<div class="psec"><div class="istit">eigenvectors</div>
       ${field('show', chips(layerChip(item, 'eigen', 'on')))}
-      ${[0, 1, 2].map((i) => field('V' + (i + 1), chips(cell(i, 'eigPole', 'pole'), cell(i, 'eigPlane', 'great circle'))))}</div>`;
+      ${[0, 1, 2].map((i) => field('V' + (i + 1), chips(cell(i, 'eigPole', 'pole'), cell(i, 'eigPlane', 'great circle')), eigRO(i)))}</div>`;
   }
   function symbolSection(item) {
     const st = item.currentStyle();

@@ -61,4 +61,14 @@ test('inspector sections render IN ORDER, each owning its own controls', () => {
   assert.ok(buckets['eigenvectors']?.some((l) => l.startsWith('V3')), 'V3 row present under eigenvectors');
   // nothing from density should have leaked into eigenvectors
   assert.ok(!buckets['eigenvectors']?.some((l) => l.startsWith('method')), 'density control did not leak into eigenvectors');
+
+  // eigenvector + mean rows carry an orientation read-out (trend/plunge)
+  const eigRows = [...pbody.querySelectorAll('.psec')].find((s) => text(s.querySelector('.istit')) === 'eigenvectors');
+  const vReadouts = [...eigRows.querySelectorAll('label')].filter((l) => /^V\d/.test(text(l))).map((l) => text(l.querySelector('.ro')));
+  assert.equal(vReadouts.length, 3, 'three eigenvector rows');
+  assert.ok(vReadouts.every((r) => /^\d{3}\/\d{2}$/.test(r)), `each V has a trend/plunge read-out (got ${JSON.stringify(vReadouts)})`);
+  const meanSec = [...pbody.querySelectorAll('.psec')].find((s) => text(s.querySelector('.istit')) === 'mean / confidence');
+  const meanRows = [...meanSec.querySelectorAll('label')].map((l) => [text(l.querySelector('.fk')), text(l.querySelector('.ro'))]);
+  assert.ok(meanRows.find(([k]) => k === 'mean vector')?.[1].match(/^\d{3}\/\d{2}$/), 'mean vector shows trend/plunge');
+  assert.ok(meanRows.find(([k]) => k.includes('cone'))?.[1].endsWith('°'), 'α95 cone shows an opening angle');
 });
