@@ -107,15 +107,15 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
-test('net interaction: measure is default; two clicks measure an angle + build a plane', async () => {
+test('net interaction: measure is default; a drag measures an angle + builds a plane', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);
   const net = handle.net;
   assert.equal(net.mode, 'measure', 'measure is the default mode (not rotate)');
 
-  // simulate two picked directions (skip pointer plumbing; drive the measure model)
+  // simulate a press-drag (A then B); the pointer plumbing sets net._measure
   const a = bearingDir(0, 0), b = bearingDir(90, 0);    // N-horizontal and E-horizontal lines
-  net._measure = { a, b: null }; net._measure = { a, b };
+  net._measure = { a, b };
   net.onMeasure(net.measure());
   await tick();
   const m = net.measure();

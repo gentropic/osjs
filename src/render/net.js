@@ -134,6 +134,9 @@ export class NetRenderer {
           sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
           sn.updateContours(); sn.render();
           cur = p;
+        } else if (this.mode === 'measure' && moved && this._measure) {  // drag → measure A→B
+          const b = sn.unproject(p.x, p.y);
+          if (b) { this._measure.b = b; this.render(); if (this.onMeasure) this.onMeasure(this.measure()); }
         }
       } else if (this.onHover) {                   // hover → read-out
         this.onHover(sn.unproject(p.x, p.y));
@@ -142,18 +145,14 @@ export class NetRenderer {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       cur = toSvg(e); moved = false; el.setPointerCapture?.(e.pointerId); e.preventDefault();
+      if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
     el.addEventListener('pointerup', () => {
-      const click = cur && !moved;
-      const d = click ? sn.unproject(cur.x, cur.y) : null;
+      const d = (cur && !moved) ? sn.unproject(cur.x, cur.y) : null;
+      const wasClick = !moved;
       cur = null;
-      if (!click || !d) return;
-      if (this.mode === 'pick' && this.onPick) this.onPick(d);
-      else if (this.mode === 'measure') {          // two-click angle measurement
-        this._measure = (!this._measure || this._measure.b) ? { a: d, b: null } : { a: this._measure.a, b: d };
-        this.render();
-        if (this._measure.b && this.onMeasure) this.onMeasure(this.measure());
-      }
+      if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
+      else if (this.mode === 'measure' && wasClick) { this._measure = null; this.render(); }  // click (no drag) cancels
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
     this._syncCursor();
