@@ -28,7 +28,11 @@ export class DataItem {
   constructor(opts = {}) {
     this.type = this.constructor.kind;
     this.id = opts.id || uid(this.type);
-    this.name = opts.name || this.id;
+    this._nv = opts.name || this.id;
+    const [name, setNameSig] = signal(this._nv);
+    this.name = name;
+    this.setName = (v) => { this._nv = v; setNameSig(v); };
+    this.currentName = () => this._nv;
 
     const [measurements, setMeasurements] = signal(opts.measurements || []);
     this.measurements = measurements; this.setMeasurements = setMeasurements;
@@ -87,13 +91,13 @@ export class DataItem {
     if (space === 'rose') {
       const az = this._azimuths();
       return az.length
-        ? [{ kind: 'rose', azimuths: az, axial: this._axial, style: this.style(), label: this.name, source: { item: this.id } }]
+        ? [{ kind: 'rose', azimuths: az, axial: this._axial, style: this.style(), label: this.name(), source: { item: this.id } }]
         : [];
     }
     if (space === 'fabric') {
       const d = this.dcos();
       return d.length >= 2
-        ? [{ kind: 'fabric', dcos: d, style: this.style(), label: this.name, source: { item: this.id } }]
+        ? [{ kind: 'fabric', dcos: d, style: this.style(), label: this.name(), source: { item: this.id } }]
         : [];
     }
     return [];
@@ -145,6 +149,11 @@ export class Project {
     this.items = items; this.setItems = setItems;
     const [projection, setProjection] = signal(opts.projection || 'equal-area');
     this.projection = projection; this.setProjection = setProjection;
+    // global render settings (read by renderers, so changes re-render reactively)
+    const [roseBinWidth, setRoseBinWidth] = signal(opts.roseBinWidth || 10);
+    this.roseBinWidth = roseBinWidth; this.setRoseBinWidth = setRoseBinWidth;
+    const [contourMethod, setContourMethod] = signal(opts.contourMethod || 'fisher');
+    this.contourMethod = contourMethod; this.setContourMethod = setContourMethod;
   }
 
   add(item) { this.setItems([...this.items(), item]); return item; }

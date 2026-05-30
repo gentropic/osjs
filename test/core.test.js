@@ -89,7 +89,7 @@ test('items contribute one fabric descriptor carrying dcos', () => {
   assert.equal(fab.length, 1);
   assert.equal(fab[0].kind, 'fabric');
   assert.equal(fab[0].dcos.length, 3);
-  assert.equal(fab[0].label, ps.name);
+  assert.equal(fab[0].label, ps.name());
 });
 
 test('fabric needs ≥2 measurements', () => {

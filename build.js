@@ -16,7 +16,9 @@ console.log('Built dist/osjs.js');
 
 // Inline into a single deployable HTML.
 const js = readFileSync('dist/osjs.js', 'utf8');
+// Function replacement so `$`-sequences in the minified JS ($&, $`, $') aren't
+// interpreted as replacement patterns (which silently balloons the output).
 const html = readFileSync('index.html', 'utf8')
-  .replace('<script type="module" src="./src/main.js"></script>', `<script>${js}</script>`);
+  .replace('<script type="module" src="./src/main.js"></script>', () => `<script>${js}</script>`);
 writeFileSync('dist/osjs.html', html);
 console.log('Built dist/osjs.html (single file)');

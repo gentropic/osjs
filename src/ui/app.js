@@ -1,14 +1,14 @@
 /**
  * @module ui/app — the OSJS shell (reactive workspace).
  *
- * Header (projection · pick · export · theme), a sidebar (layered data tree +
- * add-data + properties), three plot panels (net · rose · fabric), and a status
- * footer with a live cursor→attitude read-out — all reactive off one Project via
- * sideact. The net is interactive: drag to rotate, and in pick mode click to add
- * a measurement to the selected dataset.
+ * Layout: header (projection · pick · export · theme) · data tree · tabbed plot
+ * area (projection / rose / fabric, one at a time) · inspector (rich properties
+ * + global settings) · status footer (live cursor→attitude read-out). All
+ * reactive off one Project via sideact. Net is interactive: drag to rotate, and
+ * in pick mode click to add a measurement to the selected dataset.
  *
- * Note: sideact's attribute binding replaces the whole attribute, so a dynamic
- * class must return the FULL class string (no static prefix in the template).
+ * Note: sideact replaces the whole attribute on a binding, so a dynamic class
+ * must return the FULL class string (no static prefix in the template).
  */
 
 import { signal, effect } from '../../vendor/sideact/signals.js';
@@ -23,8 +23,8 @@ import { parsePairs } from '../io/parse.js';
 
 const { conversions } = bearing;
 const PALETTE = ['#1aa39a', '#e8920c', '#cc3333', '#7a5cff', '#3a9a3a', '#c060c0', '#d4548a', '#5bb8d4'];
-const pad = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0');
-const pad2 = (x) => String(Math.round(x)).padStart(2, '0');
+const az = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0');
+const p2 = (x) => String(Math.round(x)).padStart(2, '0');
 
 export function mountApp(root) {
   const project = new Project();
@@ -41,11 +41,12 @@ export function mountApp(root) {
   const [theme, setTheme] = signal('light');
   const [pick, setPick] = signal(false);
   const [cursor, setCursor] = signal(null);
+  const [activeTab, setActiveTab] = signal('net');
 
   // ── plots ──
-  const net = new NetRenderer(project, { size: 520 });
-  const rose = new RoseRenderer(project, { size: 260 });
-  const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 260 });
+  const net = new NetRenderer(project, { size: 540 });
+  const rose = new RoseRenderer(project, { size: 300 });
+  const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 300 });
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
   net.onHover = (d) => setCursor(d);
@@ -81,7 +82,7 @@ export function mountApp(root) {
         <button class="caret" onclick=${(e) => { e.stopPropagation(); setExpanded((v) => !v); }}>${() => (expanded() ? '▾' : '▸')}</button>
         ${vis}
         <span class="sw" style=${() => ({ background: item.style().color || '#888' })}></span>
-        <span class="nm">${() => item.name}</span>
+        <span class="nm">${() => item.name()}</span>
         <span class="ty">${item.type}</span>
         <button class="rm" title="remove" onclick=${(e) => {
           e.stopPropagation(); project.remove(item);
@@ -119,39 +120,70 @@ export function mountApp(root) {
       <button onclick=${() => setAdding(false)}>cancel</button></div></div>`;
   }
 
-  // ── properties ──
+  // ── properties (rich) ──
   const propsHost = document.createElement('div');
   propsHost.className = 'props';
   effect(() => { propsHost.replaceChildren(propsFor(selected())); });
   function propsFor(item) {
-    if (!item) return h`<div class="muted">no selection</div>`;
+    if (!item) return h`<div class="muted">no dataset selected</div>`;
     const st = item.currentStyle();
     const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
     const sizeCtl = item.type === 'planes'
-      ? h`<label>width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>`
-      : h`<label>size <input type="number" min="1" max="10" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>`;
+      ? h`<label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>`
+      : h`<label>point size <input type="number" min="1" max="10" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>`;
     const s = item.stats();
-    const stat = s ? `S₁ ${s.eigenvalues[0].toFixed(3)} · K ${s.K.toFixed(2)} · C ${s.C.toFixed(2)} · n ${s.fisher.n}`
-      : `${item.measurements().length} measurement(s)`;
+    let statsNode;
+    if (s) {
+      const [mt, mp] = conversions.dcosToLine(s.fisher.mean);
+      const srow = (k, v) => h`<div class="srow"><span>${k}</span><b>${v}</b></div>`;
+      statsNode = h`<div class="stats">
+        ${srow('S₁ S₂ S₃', s.eigenvalues.map((v) => v.toFixed(3)).join('  '))}
+        ${srow('Woodcock K · C', `${s.K.toFixed(2)} · ${s.C.toFixed(2)}`)}
+        ${srow('Vollmer P G R', `${s.P.toFixed(2)} ${s.G.toFixed(2)} ${s.R.toFixed(2)}`)}
+        ${srow('Fisher mean', `${az(mt)}/${p2(mp)}`)}
+        ${srow('κ · α₉₅ · n', `${s.fisher.kappa.toFixed(1)} · ${s.fisher.alpha95.toFixed(1)}° · ${s.fisher.n}`)}
+      </div>`;
+    } else {
+      statsNode = h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
+    }
     return h`<div class="pbody">
-      <div class="phead">${item.name} <span class="ty">${item.type}</span></div>
+      <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
+      <div class="ptype">${item.type}</div>
       <label>colour <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
       ${sizeCtl}
-      <div class="stat">${stat}</div></div>`;
+      ${statsNode}
+    </div>`;
   }
 
-  // ── header / footer ──
-  const seg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')}
-      onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const fabricToggle = h`<select class="fmode" onchange=${(e) => fabric.setMode(e.target.value)}>
-      <option value="woodcock">Woodcock</option><option value="vollmer">Vollmer</option></select>`;
+  // ── settings (global) ──
+  const methodSeg = (m, label) => h`<button class=${() => (project.contourMethod() === m ? 'seg on' : 'seg')} onclick=${() => project.setContourMethod(m)}>${label}</button>`;
+  const settings = h`<div class="settings">
+    <label>density <span class="grp small">${methodSeg('fisher', 'Fisher')}${methodSeg('kamb', 'Kamb')}</span></label>
+    <label>rose bin <select onchange=${(e) => project.setRoseBinWidth(+e.target.value)}>
+      ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === 10 ? 'selected' : null}>${w}°</option>`)}
+    </select></label>
+    <label>fabric <select onchange=${(e) => fabric.setMode(e.target.value)}>
+      <option value="woodcock">Woodcock</option><option value="vollmer">Vollmer</option>
+    </select></label>
+  </div>`;
 
+  // ── tabbed plots ──
+  const tab = (key, label) => h`<button class=${() => (activeTab() === key ? 'tab on' : 'tab')} onclick=${() => setActiveTab(key)}>${label}</button>`;
+  const wraps = {
+    net: h`<div class="plotwrap">${net.element}</div>`,
+    rose: h`<div class="plotwrap">${rose.element}</div>`,
+    fabric: h`<div class="plotwrap">${fabric.element}</div>`,
+  };
+  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; });
+
+  // ── header / footer ──
+  const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
     if (!d) return '';
     const [t, p] = conversions.dcosToLine(d);
     const [dd, dip] = conversions.dcosToPlane(d);
-    return `line ${pad(t)}/${pad2(p)}  ·  plane ${pad(dd)}/${pad2(dip)}`;
+    return `line ${az(t)}/${p2(p)}  ·  plane ${az(dd)}/${p2(dip)}`;
   };
   const countText = () => {
     let n = 0; for (const it of project.items()) n += it.measurements().length;
@@ -162,7 +194,7 @@ export function mountApp(root) {
     <header class="topbar">
       <div class="brand"><span class="glyph">⌖</span><span class="name">OSJS</span><span class="sub">OpenStereo · web edition</span></div>
       <span class="spacer"></span>
-      <div class="grp">${seg('equal-area', 'equal-area')}${seg('equal-angle', 'equal-angle')}</div>
+      <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <button class=${() => (pick() ? 'btn on' : 'btn')} title="click the net to add a measurement to the selected set"
         onclick=${() => { const v = !pick(); setPick(v); net.setPickMode(v); }}>pick</button>
       <button class="btn" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
@@ -174,13 +206,16 @@ export function mountApp(root) {
         <div class="sect">data <span class="count">${() => project.items().length}</span></div>
         <div class="list">${list}</div>
         ${addHost}
+      </aside>
+      <main class="main">
+        <div class="tabs">${tab('net', 'projection')}${tab('rose', 'rose')}${tab('fabric', 'fabric')}</div>
+        <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}</div>
+      </main>
+      <aside class="inspector">
         <div class="sect">properties</div>
         ${propsHost}
-      </aside>
-      <main class="main">${net.element}</main>
-      <aside class="aux">
-        <div class="panel"><div class="sect">rose</div><div class="panel-body">${rose.element}</div></div>
-        <div class="panel"><div class="sect">fabric ${fabricToggle}</div><div class="panel-body">${fabric.element}</div></div>
+        <div class="sect">settings</div>
+        ${settings}
       </aside>
     </div>
     <footer class="statusbar">

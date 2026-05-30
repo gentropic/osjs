@@ -16,23 +16,21 @@ export class RoseRenderer {
   constructor(project, opts = {}) {
     this.project = project;
     this.size = opts.size || 320;
-    this.binWidth = opts.binWidth || 10;
     this._el = document.createElement('div');
   }
 
   get element() { return this._el; }
 
-  setBinWidth(w) { this.binWidth = w; this.render(); }
-
   render() {
     const size = this.size, pad = 22, cx = size / 2, cy = size / 2, radius = (size - 2 * pad) / 2;
+    const binWidth = this.project.roseBinWidth();   // global setting (reactive)
     const svg = new SvgBuilder(size, size);
     svg.circle(cx, cy, radius, { fill: 'none', stroke: '#999', 'stroke-width': 1 });
 
     // Bin each item; share the max count so petal lengths are comparable.
     const binned = this.project.contribute('rose').map((c) => ({
       color: (c.style && (c.style.color || c.style.fill)) || '#e8920c',
-      b: rose.roseBins(c.azimuths, { binWidth: this.binWidth, axial: c.axial }),
+      b: rose.roseBins(c.azimuths, { binWidth, axial: c.axial }),
     }));
     const gmax = Math.max(1, ...binned.map((x) => x.b.maxCount));
 
