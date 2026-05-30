@@ -107,6 +107,33 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('net interaction: measure is default; two clicks measure an angle + build a plane', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const net = handle.net;
+  assert.equal(net.mode, 'measure', 'measure is the default mode (not rotate)');
+
+  // simulate two picked directions (skip pointer plumbing; drive the measure model)
+  const a = bearingDir(0, 0), b = bearingDir(90, 0);    // N-horizontal and E-horizontal lines
+  net._measure = { a, b: null }; net._measure = { a, b };
+  net.onMeasure(net.measure());
+  await tick();
+  const m = net.measure();
+  assert.ok(Math.abs(m.angle - 90) < 1, `angle ≈ 90° (got ${m.angle})`);
+  assert.ok(root.querySelector('.measurebar .mini'), 'construct buttons appear in the status bar');
+
+  // ＋plane builds the common great circle (pole = a×b → vertical N–S plane)
+  const n0 = handle.project.items().length;
+  [...root.querySelectorAll('.measurebar .mini')].find((x) => /plane/.test(x.textContent)).click();
+  assert.equal(handle.project.items().length, n0 + 1);
+  assert.equal(handle.project.items().at(-1).type, 'planes');
+});
+
+function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
+  const t = trend * Math.PI / 180, p = plunge * Math.PI / 180;
+  return [Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t), -Math.sin(p)];
+}
+
 test('import conventions: strike→dip-direction for planes, rake→trend/plunge for lines', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);

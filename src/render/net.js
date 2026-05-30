@@ -12,7 +12,8 @@
 
 import * as bearing from '../../vendor/bearing.mjs';
 
-const { Stereonet, conversions, mat3, color } = bearing;
+const { Stereonet, conversions, mat3, color, vec3 } = bearing;
+const DEG = 180 / Math.PI;
 
 // Colour rides on the SVG attribute (so it can vary per measurement for
 // colour-by-data); the host's injected `ds-<id>` stylesheet (see ui/app.js)
@@ -38,9 +39,11 @@ export class NetRenderer {
   constructor(project, opts = {}) {
     this.project = project;
     this._size = opts.size || 540;
-    this.pickMode = false;
+    this.mode = 'measure';        // 'measure' | 'rotate' | 'pick'
+    this._measure = null;         // { a:dcos, b:dcos|null } two-click angle measurement
     this.onHover = null;
     this.onPick = null;
+    this.onMeasure = null;
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -65,8 +68,34 @@ export class NetRenderer {
     sn.clearContours();
     sn.clearHeatmap();
     for (const p of this.project.contribute('net')) this._draw(p);
+    this._drawMeasure();
     sn.render();
   }
+
+  // two-click measurement overlay: the picked point(s), the great circle through
+  // them, and (host-side) the angle between them — drawn on top of the data.
+  _drawMeasure() {
+    const m = this._measure; if (!m) return;
+    const C = '#0e7d75';
+    const mark = (d) => { const [t, pl] = conversions.dcosToLine(d); this.sn.line(t, pl, { fill: C, stroke: '#fff', r: 4, class: 'osjs-measure' }); };
+    mark(m.a);
+    if (m.b) {
+      const pole = vec3.normalize(vec3.cross(m.a, m.b));
+      if (Number.isFinite(pole[0]) && vec3.length(pole) > 1e-6) {
+        const [dd, dip] = conversions.dcosToPlane(pole);
+        this.sn.plane(dd, dip, { stroke: C, 'stroke-width': 1.5, 'stroke-dasharray': '5 3', class: 'osjs-measure' });
+      }
+      mark(m.b);
+    }
+  }
+
+  measure() {
+    const m = this._measure; if (!m || !m.b) return null;
+    const angle = Math.acos(Math.max(-1, Math.min(1, vec3.dot(vec3.normalize(m.a), vec3.normalize(m.b))))) * DEG;
+    const pole = vec3.normalize(vec3.cross(m.a, m.b));
+    return { a: m.a, b: m.b, angle, pole };
+  }
+  clearMeasure() { this._measure = null; this.render(); }
 
   _draw(p) {
     const sn = this.sn, st = p.style || {}, item = p.source && p.source.item;
@@ -98,12 +127,14 @@ export class NetRenderer {
     };
     el.addEventListener('pointermove', (e) => {
       const p = toSvg(e);
-      if (cur) {                                   // dragging → arcball
+      if (cur) {
         if (Math.hypot(p.x - cur.x, p.y - cur.y) > 1) moved = true;
-        const arc = sn.arcball(cur.x, cur.y, p.x, p.y);
-        sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
-        sn.updateContours(); sn.render();
-        cur = p;
+        if (this.mode === 'rotate') {              // drag → arcball spin
+          const arc = sn.arcball(cur.x, cur.y, p.x, p.y);
+          sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
+          sn.updateContours(); sn.render();
+          cur = p;
+        }
       } else if (this.onHover) {                   // hover → read-out
         this.onHover(sn.unproject(p.x, p.y));
       }
@@ -113,16 +144,21 @@ export class NetRenderer {
       cur = toSvg(e); moved = false; el.setPointerCapture?.(e.pointerId); e.preventDefault();
     });
     el.addEventListener('pointerup', () => {
-      if (cur && !moved && this.pickMode && this.onPick) {
-        const d = sn.unproject(cur.x, cur.y);
-        if (d) this.onPick(d);
-      }
+      const click = cur && !moved;
+      const d = click ? sn.unproject(cur.x, cur.y) : null;
       cur = null;
+      if (!click || !d) return;
+      if (this.mode === 'pick' && this.onPick) this.onPick(d);
+      else if (this.mode === 'measure') {          // two-click angle measurement
+        this._measure = (!this._measure || this._measure.b) ? { a: d, b: null } : { a: this._measure.a, b: d };
+        this.render();
+        if (this._measure.b && this.onMeasure) this.onMeasure(this.measure());
+      }
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
     this._syncCursor();
   }
 
-  _syncCursor() { this._el.style.cursor = this.pickMode ? 'crosshair' : 'grab'; }
-  setPickMode(on) { this.pickMode = on; this._syncCursor(); }
+  _syncCursor() { this._el.style.cursor = this.mode === 'rotate' ? 'grab' : 'crosshair'; }
+  setMode(m) { this.mode = m; this._syncCursor(); }
 }

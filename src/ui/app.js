@@ -56,7 +56,8 @@ export function mountApp(root) {
   const [selected, setSelected] = signal(project.items()[0] || null);
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
-  const [pick, setPick] = signal(false);
+  const [mode, setMode] = signal('measure');   // net interaction: measure | rotate | pick
+  const [measure, setMeasure] = signal(null);   // last two-click measurement
   const [cursor, setCursor] = signal(null);
   const [activeTab, setActiveTab] = signal('net');
 
@@ -131,6 +132,7 @@ export function mountApp(root) {
   effect(() => { sheet.textContent = project.items().map(itemCSS).join(''); });
 
   net.onHover = (d) => setCursor(d);
+  net.onMeasure = (m) => setMeasure(m);
   net.onPick = (d) => {
     const it = selected();
     if (!it || isGroup(it) || it.type === 'fault') return;   // faults need rake+sense → use the form
@@ -139,6 +141,7 @@ export function mountApp(root) {
     const datum = it.type === 'smallcircle' ? [Math.round(a), Math.round(b), 30] : [Math.round(a), Math.round(b)];
     it.setMeasurements([...it.measurements(), datum]);
   };
+  effect(() => net.setMode(mode()));
   effect(() => document.body.classList.toggle('theme-dark', theme() === 'dark'));
 
   // ── data tree (nestable groups + data items, HTML5 drag-drop) ──
@@ -622,13 +625,34 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
+  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${m === 'measure' ? 'click two points to measure the angle + their common plane' : m === 'rotate' ? 'drag to spin the net' : 'click to add a measurement to the selected layer'} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
-    if (!d) return '';
+    if (!d) return mode() === 'measure' ? 'measure: click two points' : '';
     const [t, p] = conversions.dcosToLine(d);
     const [dd, dip] = conversions.dcosToPlane(d);
     return `line ${az(t)}/${p2(p)}  ·  plane ${az(dd)}/${p2(dip)}`;
   };
+  const measureText = () => {
+    const m = measure();
+    if (!m) return notice() || cursorText();
+    const [ta, pa] = conversions.dcosToLine(m.a), [tb, pb] = conversions.dcosToLine(m.b);
+    const [dd, dip] = conversions.dcosToPlane(m.pole);
+    return `${az(ta)}/${p2(pa)} → ${az(tb)}/${p2(pb)}  ·  ${m.angle.toFixed(1)}°  ·  plane ${az(dd)}/${p2(dip)}`;
+  };
+  // construct a layer from the current measurement (common plane / its axis)
+  const constructFrom = (kind) => {
+    const m = measure(); if (!m) return;
+    const color = PALETTE[project.items().length % PALETTE.length];
+    if (kind === 'plane') { const [dd, dip] = conversions.dcosToPlane(m.pole).map(Math.round); addPayload({ type: 'planes', name: 'plane', measurements: [[dd, dip]], style: { color, width: 1 } }); }
+    else { const [t, p] = conversions.dcosToLine(m.pole).map(Math.round); addPayload({ type: 'lines', name: 'axis', measurements: [[t, p]], style: { color, size: 5 } }); }
+  };
+  const measureBar = document.createElement('span');
+  measureBar.className = 'measurebar';
+  effect(() => {
+    if (!measure()) { measureBar.replaceChildren(); return; }
+    measureBar.replaceChildren(h`<button class="mini" onclick=${() => constructFrom('plane')}>＋plane</button><button class="mini" onclick=${() => constructFrom('axis')}>＋axis</button><button class="mini" onclick=${() => { net.clearMeasure(); setMeasure(null); }}>clear</button>`);
+  });
   const countText = () => {
     let n = 0; for (const it of project.items()) n += it.measurements().length;
     return `${project.items().length} sets · ${n} measurements · ${project.projection()}, lower hemisphere`;
@@ -642,8 +666,9 @@ export function mountApp(root) {
       <div class="brand"><span class="glyph">⌖</span><span class="name">OSJS</span><span class="sub">OpenStereo · web edition</span></div>
       <span class="spacer"></span>
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
-      <button class=${() => (pick() ? 'btn on' : 'btn')} title="click the net to add a measurement to the selected set"
-        onclick=${() => { const v = !pick(); setPick(v); net.setPickMode(v); }}>pick</button>
+      <div class="grp" title="net interaction mode">
+        ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+      </div>
       <div class="grp">
         <button class="seg" title="open an OSJS project file" onclick=${() => openInput.click()}>open</button>
         <button class="seg" title="save the project to a file" onclick=${saveProject}>save</button>
@@ -673,7 +698,8 @@ export function mountApp(root) {
       </aside>
     </div>
     <footer class="statusbar">
-      <span class="cur">${() => notice() || cursorText()}</span>
+      <span class="cur">${() => measureText()}</span>
+      ${measureBar}
       <span class="spacer"></span>
       <span class="cnt">${() => countText()}</span>
     </footer>
