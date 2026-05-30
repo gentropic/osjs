@@ -14,11 +14,17 @@ import * as bearing from '../../vendor/bearing.mjs';
 
 const { Stereonet, conversions, mat3 } = bearing;
 
-// The host injects a per-item stylesheet keyed on `ds-<id>` (see ui/app.js), so
-// opacity, line-style (dash) and open/filled markers are CSS — SVG presentation
-// attributes lose to a class rule, so the engine's fill/stroke get overridden.
+// Colour rides on the SVG attribute (so it can vary per measurement for
+// colour-by-data); the host's injected `ds-<id>` stylesheet (see ui/app.js)
+// owns only the per-item bits the engine can't set per primitive — opacity,
+// plane dash, point edge-width. A class rule beats a presentation attribute,
+// so the two never fight over colour.
 const cls = (st, item) => [item && `ds-${item}`, st.class].filter(Boolean).join(' ') || undefined;
-const pointStyle = (st, item) => ({ fill: st.color || st.fill, stroke: st.stroke, r: st.size, class: cls(st, item) });
+const pointStyle = (st, item) => {
+  const open = st.pointFill === 'open';
+  const color = st.color || st.fill || '#888888';
+  return { fill: open ? 'none' : color, stroke: open ? color : (st.stroke || color), r: st.size, class: cls(st, item) };
+};
 const lineStyle = (st, item) => ({ stroke: st.color || st.stroke, 'stroke-width': st.width, class: cls(st, item) });
 
 // hex "#rrggbb" → "rgba(r,g,b,a)"

@@ -58,13 +58,14 @@ export function mountApp(root) {
   document.head.appendChild(sheet);
   const dash = (kind, w) => kind === 'dashed' ? `${w * 4} ${w * 3}` : kind === 'dotted' ? `${w} ${w * 2.4}` : 'none';
   function itemCSS(item) {
-    const st = item.style(), c = `ds-${item.id}`, color = st.color || '#888';
+    // colour is on the SVG attribute (per-datum capable); CSS owns only what the
+    // engine can't set per primitive — opacity, point edge-width, plane dash.
+    const st = item.style(), c = `ds-${item.id}`;
     const op = st.opacity == null ? 1 : st.opacity;
-    const open = st.pointFill === 'open';
-    const ew = st.edgeWidth == null ? (open ? 1.2 : 0) : st.edgeWidth;
+    const ew = st.edgeWidth == null ? (st.pointFill === 'open' ? 1.2 : 0) : st.edgeWidth;
     const w = st.width || 1;
-    return `.osjs-pole.${c},.osjs-line.${c}{fill:${open ? 'none' : color};stroke:${open || ew > 0 ? color : 'none'};stroke-width:${ew};opacity:${op};}\n`
-         + `.osjs-plane.${c}{stroke:${color};stroke-dasharray:${dash(st.lineStyle, w)};opacity:${op};}\n`;
+    return `.osjs-pole.${c},.osjs-line.${c}{stroke-width:${ew};opacity:${op};}\n`
+         + `.osjs-plane.${c}{stroke-dasharray:${dash(st.lineStyle, w)};opacity:${op};}\n`;
   }
   effect(() => { sheet.textContent = project.items().map(itemCSS).join(''); });
 

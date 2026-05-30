@@ -105,6 +105,39 @@ test('Project aggregates each space across visible items', () => {
   assert.ok(proj.contribute('net').length >= 4);      // 2 great circles + 2 points
 });
 
+test('single colour mode: every primitive uses the item colour', () => {
+  const ps = new PoleSet({ measurements: [[210, 65], [220, 60]], style: { color: '#abcdef' } });
+  const prims = ps.contribute('net');
+  assert.ok(prims.every((p) => p.style.color === '#abcdef'));
+  assert.equal(ps.colorLegend(), null);
+});
+
+test('categorical colour-by: distinct classes get distinct per-datum colours', () => {
+  const ps = new PoleSet({
+    measurements: [[210, 65], [220, 60], [200, 70]],
+    columns: [{ name: 'set', values: ['A', 'B', 'A'] }],
+    style: { color: '#888', colorMode: 'categorical', colorBy: 0 },
+  });
+  const pts = ps.contribute('net').filter((p) => p.kind === 'point');
+  assert.equal(pts[0].style.color, pts[2].style.color, 'same class → same colour');
+  assert.notEqual(pts[0].style.color, pts[1].style.color, 'different class → different colour');
+  const legend = ps.colorLegend();
+  assert.equal(legend.type, 'categorical');
+  assert.deepEqual(legend.entries.map(([v]) => v), ['A', 'B']);
+});
+
+test('ramp colour-by: numeric column drives colour + legend range', () => {
+  const ps = new PoleSet({
+    measurements: [[210, 65], [220, 60], [200, 70]],
+    columns: [{ name: 'conf', values: ['0', '0.5', '1'] }],
+    style: { colorMode: 'ramp', colorBy: 0, colorRamp: 'viridis' },
+  });
+  const pts = ps.contribute('net').filter((p) => p.kind === 'point');
+  assert.ok(/^rgb\(/.test(pts[0].style.color) && pts[0].style.color !== pts[2].style.color);
+  const legend = ps.colorLegend();
+  assert.deepEqual([legend.type, legend.min, legend.max], ['ramp', 0, 1]);
+});
+
 test('parsePairs is forgiving (space/comma/slash, comments)', () => {
   assert.deepEqual(parsePairs('120 35\n125,40\n118/32\n; comment\n  # x\nbad'), [[120, 35], [125, 40], [118, 32]]);
 });

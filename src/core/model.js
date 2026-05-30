@@ -18,8 +18,12 @@ import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
-const { conversions, statistics } = bearing;
+const { conversions, statistics, color } = bearing;
 const { meanVector, principalAxes, fisherStats } = statistics;
+
+// categorical palette for colour-by-class (distinct, print-friendly)
+const CAT_PALETTE = ['#1aa39a', '#e8920c', '#cc3333', '#7a5cff', '#3a9a3a', '#c060c0', '#d4548a', '#5bb8d4', '#9a7a3a', '#6a6f78'];
+const distinct = (vals) => [...new Set(vals.map((v) => String(v)))];
 
 // per-element tuning (contour method/smoothing/levels, mean confidence cone,
 // per-eigenvector display mode) — separate from on/off layers and from style.
@@ -48,6 +52,14 @@ export class DataItem {
 
     const [measurements, setMeasurements] = signal(opts.measurements || []);
     this.measurements = measurements; this.setMeasurements = setMeasurements;
+
+    // columns — optional per-measurement attributes (from CSV import), each
+    // { name, values } with values aligned to measurements. Enables colour-by.
+    this._cv = opts.columns || [];
+    const [columns, setColumnsSig] = signal(this._cv);
+    this.columns = columns;
+    this.currentColumns = () => this._cv;
+    this.setColumns = (v) => { this._cv = v || []; setColumnsSig(this._cv); };
     this._vv = opts.visible !== false;
     const [visible, setVisibleSig] = signal(this._vv);
     this.visible = visible;
@@ -84,15 +96,62 @@ export class DataItem {
 
   dcos() { return this.measurements().map((m) => this._convert(m)); }
 
+  // Distinct categories of a column → { value: colour } (style.catColors overrides).
+  _categories(col) {
+    const st = this.style(), over = st.catColors || {};
+    const out = {};
+    distinct(col.values).forEach((v, i) => { out[v] = over[v] || CAT_PALETTE[i % CAT_PALETTE.length]; });
+    return out;
+  }
+
+  // Per-measurement colour function (i) → CSS colour, honouring style.colorMode.
+  _colorFn() {
+    const st = this.style(), cols = this.columns();
+    const single = st.color || '#888888';
+    const col = cols[st.colorBy];
+    if (!col || (st.colorMode !== 'ramp' && st.colorMode !== 'categorical')) return () => single;
+    if (st.colorMode === 'ramp') {
+      const nums = col.values.map(Number);
+      const finite = nums.filter(Number.isFinite);
+      if (!finite.length) return () => single;
+      const min = st.rampMin != null ? st.rampMin : Math.min(...finite);
+      const max = st.rampMax != null ? st.rampMax : Math.max(...finite);
+      const ramp = st.colorRamp || 'viridis';
+      return (i) => (Number.isFinite(nums[i]) ? color.mapValue(ramp, nums[i], min, max, { reverse: !!st.rampReverse }) : single);
+    }
+    const cats = this._categories(col);
+    return (i) => cats[String(col.values[i])] || single;
+  }
+
+  // Legend descriptor for the active colour-by mode (null if single colour).
+  colorLegend() {
+    const st = this.style(), cols = this.columns();
+    const col = cols[st.colorBy];
+    if (!col) return null;
+    if (st.colorMode === 'ramp') {
+      const nums = col.values.map(Number).filter(Number.isFinite);
+      if (!nums.length) return null;
+      return { type: 'ramp', column: col.name, ramp: st.colorRamp || 'viridis', reverse: !!st.rampReverse,
+        min: st.rampMin != null ? st.rampMin : Math.min(...nums), max: st.rampMax != null ? st.rampMax : Math.max(...nums) };
+    }
+    if (st.colorMode === 'categorical') {
+      const cats = this._categories(col);
+      return { type: 'categorical', column: col.name, entries: Object.entries(cats) };
+    }
+    return null;
+  }
+
   // Layer-aware geometric contribution (shared by all item types).
   _net() {
     const L = this.layers(), st = this.style(), P = this.params(), d = this.dcos(), out = [];
     const src = (i) => ({ item: this.id, datum: i });
+    const colorFn = this._colorFn();
+    const dStyle = (i) => (st.colorMode === 'ramp' || st.colorMode === 'categorical') ? { ...st, color: colorFn(i) } : st;
     if (this.type === 'planes') {
-      if (L.great) d.forEach((p, i) => out.push(greatCircle(p, st, src(i))));
-      if (L.poles) d.forEach((p, i) => out.push(point(p, st, src(i))));
+      if (L.great) d.forEach((p, i) => out.push(greatCircle(p, dStyle(i), src(i))));
+      if (L.poles) d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
     } else if (L.points !== false) {
-      d.forEach((p, i) => out.push(point(p, st, src(i))));
+      d.forEach((p, i) => out.push(point(p, dStyle(i), src(i))));
     }
     // density — method / smoothing / levels are tunable per item
     const dOpts = { method: P.cMethod };
