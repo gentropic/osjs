@@ -224,8 +224,12 @@ export function mountApp(root) {
     s.onchange = () => onChange(parseInt(s.value, 10));
     return s;
   }
+  const segSig = (sig, opts) => h`<span class="grp small">${opts.map(([v, l]) =>
+    h`<button class=${() => (sig[0]() === v ? 'seg on' : 'seg')} onclick=${() => sig[1](v)}>${l}</button>`)}</span>`;
   function addForm() {
     const type = signal('planes');
+    const conv = signal('dd');         // planes/poles: azimuth is dip-direction vs strike (RHR)
+    const lineInput = signal('tp');    // lines: trend/plunge vs rake-on-plane
     const [table, setTable] = signal(null);
     const map = { azIdx: 0, dipIdx: 1, colorBy: -1 };  // read at commit time
     const ta = h`<textarea class="ta" rows="5" placeholder="paste pairs (120 35) or CSV/TSV with a header row"></textarea>`;
@@ -250,11 +254,22 @@ export function mountApp(root) {
     };
     ta.addEventListener('input', detect);
 
+    // attitude-convention options (per type)
+    const optsHost = document.createElement('div');
+    optsHost.className = 'formopts';
+    effect(() => {
+      const t = type[0]();
+      if (t === 'planes' || t === 'poles') optsHost.replaceChildren(h`<label class="mrow"><span class="fk">azimuth is</span>${segSig(conv, [['dd', 'dip dir'], ['strike', 'strike (RHR)']])}</label>`);
+      else if (t === 'lines') optsHost.replaceChildren(h`<label class="mrow"><span class="fk">line as</span>${segSig(lineInput, [['tp', 'trend/plunge'], ['rake', 'rake on plane']])}</label>`);
+      else optsHost.replaceChildren();
+    });
+
     // column-mapping UI, shown only for multi-column tables
     const mapHost = document.createElement('div');
     effect(() => {
-      const tbl = table();
-      if (!tbl || tbl.columns.length <= 2 || type[0]() === 'smallcircle' || type[0]() === 'fault') { mapHost.replaceChildren(); return; }
+      const tbl = table(), t = type[0]();
+      const positional = t === 'smallcircle' || t === 'fault' || (t === 'lines' && lineInput[0]() === 'rake');
+      if (!tbl || tbl.columns.length <= 2 || positional) { mapHost.replaceChildren(); return; }
       const fld = (label, sel) => h`<label class="mrow"><span class="fk">${label}</span>${sel}</label>`;
       mapHost.replaceChildren(h`<div class="mapping">
         <div class="mhint">${tbl.columns.length} columns · ${tbl.rows.length} rows</div>
@@ -265,18 +280,26 @@ export function mountApp(root) {
     });
 
     const commit = () => {
-      const Cls = ITEM_TYPES[type[0]()] || ITEM_TYPES.planes;
+      const t = type[0]();
+      const Cls = ITEM_TYPES[t] || ITEM_TYPES.planes;
       const color = PALETTE[project.items().length % PALETTE.length];
       const tbl = table();
+      const toDipDir = (m) => (((t === 'planes' || t === 'poles') && conv[0]() === 'strike') ? m.map(([a, d]) => [(a + 90) % 360, d]) : m);
       let payload;
-      if (type[0]() === 'smallcircle') {
+      if (t === 'smallcircle') {
         const triples = parseTriples(ta.value);
         if (!triples.length) { setAdding(false); return; }
         payload = { measurements: triples, style: { color, width: 1, size: 4 } };
-      } else if (type[0]() === 'fault') {
+      } else if (t === 'fault') {
         const rows = parseFaults(ta.value);
         if (!rows.length) { setAdding(false); return; }
         payload = { measurements: rows, style: { color, width: 1, size: 4 } };
+      } else if (t === 'lines' && lineInput[0]() === 'rake') {
+        const tr = parseTriples(ta.value);   // [dip dir, dip, rake] → trend/plunge
+        if (!tr.length) { setAdding(false); return; }
+        const r1 = (x) => Math.round(x * 10) / 10;
+        const meas = tr.map(([dd, dip, rk]) => conversions.rakeToLine(dd, dip, rk).map(r1));
+        payload = { measurements: meas, style: { color, width: 1, size: 4 } };
       } else if (tbl && tbl.columns.length > 2) {
         const built = buildFromTable(tbl, map);
         if (!built.measurements.length) { setAdding(false); return; }
@@ -289,18 +312,18 @@ export function mountApp(root) {
           style.colorBy = map.colorBy;
           if (numeric) style.colorRamp = 'viridis';
         }
-        payload = { measurements: built.measurements, columns: built.columns, style };
+        payload = { measurements: toDipDir(built.measurements), columns: built.columns, style };
       } else {
         const pairs = parsePairs(ta.value);
         if (!pairs.length) { setAdding(false); return; }
-        payload = { measurements: pairs, style: { color, width: 1, size: 4 } };
+        payload = { measurements: toDipDir(pairs), style: { color, width: 1, size: 4 } };
       }
-      payload.name = nm.value || type[0]();
+      payload.name = nm.value || t;
       setSelected(project.add(new Cls(payload)));
       setAdding(false);
     };
     return h`<div class="form"><div class="frow">${typeSel}${nm}</div>
-      ${fileIn}${ta}${mapHost}
+      ${fileIn}${ta}${optsHost}${mapHost}
       <div class="frow"><button class="go" onclick=${commit}>add</button>
       <button onclick=${() => setAdding(false)}>cancel</button></div></div>`;
   }

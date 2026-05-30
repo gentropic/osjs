@@ -107,6 +107,35 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('import conventions: strike→dip-direction for planes, rake→trend/plunge for lines', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const seg = (label) => [...root.querySelectorAll('.formopts .seg')].find((b) => new RegExp(label, 'i').test(b.textContent));
+
+  // planes, azimuth entered as strike (RHR) → stored as dip direction (+90)
+  root.querySelector('.add').click(); await tick();
+  seg('strike').click();
+  const ta = root.querySelector('.form .ta');
+  ta.value = '30 60\n40 50'; ta.dispatchEvent(new window.Event('input')); await tick();
+  root.querySelector('.form .go').click();
+  assert.deepEqual(project.items().at(-1).currentMeasurements(), [[120, 60], [130, 50]]);
+  await tick();   // let the form collapse back to the + button
+
+  // lines entered as rake on a plane → converted to trend/plunge (2-tuples, finite)
+  root.querySelector('.add').click(); await tick();
+  const typeSel = root.querySelector('.form select');
+  typeSel.value = 'lines'; typeSel.dispatchEvent(new window.Event('change')); await tick();
+  seg('rake').click(); await tick();
+  assert.equal(root.querySelectorAll('.mapping select').length, 0, 'rake is positional → no column mapping');
+  const ta2 = root.querySelector('.form .ta');
+  ta2.value = '90 60 0\n120 45 90'; ta2.dispatchEvent(new window.Event('input')); await tick();
+  root.querySelector('.form .go').click();
+  const lines = project.items().at(-1);
+  assert.equal(lines.type, 'lines');
+  assert.equal(lines.currentMeasurements().length, 2);
+  assert.ok(lines.currentMeasurements().every((m) => m.length === 2 && m.every(Number.isFinite)));
+});
+
 test('small circles: add via the form (t/p/aperture) and the table shows 3 geometry columns', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);
