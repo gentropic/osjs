@@ -143,13 +143,16 @@ export function mountApp(root) {
   const propsHost = document.createElement('div');
   propsHost.className = 'props';
   effect(() => { propsHost.replaceChildren(propsFor(selected())); });
-  // a segmented (radio-like) control over style; reads the live snapshot
-  const styleSeg = (item, key, def, opts) => {
+  // a segmented (radio-like) control over style; reads the live snapshot.
+  // NB: function declaration (not const) so it is hoisted — the effect above
+  // runs synchronously on creation and calls propsFor → styleSeg before this
+  // line is reached, which would hit the TDZ if it were a `const`.
+  function styleSeg(item, key, def, opts) {
     const cur = () => item.style()[key] ?? def;
     const set = (v) => item.setStyle({ ...item.currentStyle(), [key]: v });
     return h`<span class="grp small">${opts.map(([v, l]) =>
       h`<button class=${() => (cur() === v ? 'seg on' : 'seg')} onclick=${() => set(v)}>${l}</button>`)}</span>`;
-  };
+  }
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;
     const st = item.currentStyle();
