@@ -238,60 +238,129 @@ LineSet.LAYERS = [{ key: 'points', label: 'points', default: true }, ...COMMON_L
 
 export const ITEM_TYPES = { planes: PlaneSet, poles: PoleSet, lines: LineSet };
 
+// ── tree: groups (nestable folders) hold data items and other groups ──
+let _gseq = 0;
+export const isGroup = (n) => !!n && n.kind === 'group';
+
+export class Group {
+  constructor(opts = {}) {
+    this.kind = 'group'; this.type = 'group';
+    this.id = opts.id || `group${++_gseq}`;
+    this._nv = opts.name || 'group';
+    const [name, setNameSig] = signal(this._nv);
+    this.name = name; this.setName = (v) => { this._nv = v; setNameSig(v); }; this.currentName = () => this._nv;
+    this._vv = opts.visible !== false;
+    const [visible, setVisibleSig] = signal(this._vv);
+    this.visible = visible; this.setVisible = (v) => { this._vv = v; setVisibleSig(v); }; this.currentVisible = () => this._vv;
+    this._xv = opts.expanded !== false;
+    const [expanded, setExpandedSig] = signal(this._xv);
+    this.expanded = expanded; this.setExpanded = (v) => { this._xv = v; setExpandedSig(v); }; this.currentExpanded = () => this._xv;
+    this._cv = opts.children || [];
+    const [children, setChildrenSig] = signal(this._cv);
+    this.children = children; this.setChildren = (v) => { this._cv = v; setChildrenSig(v); }; this.currentChildren = () => this._cv;
+  }
+}
+
+// depth-first leaf items; the *visible* variant prunes hidden groups (cascade)
+const leavesOf = (nodes) => nodes.flatMap((n) => (isGroup(n) ? leavesOf(n.children()) : [n]));
+const visibleLeavesOf = (nodes) => nodes.flatMap((n) => (isGroup(n) ? (n.visible() ? visibleLeavesOf(n.children()) : []) : (n.visible() ? [n] : [])));
+
 export class Project {
   constructor(opts = {}) {
-    const [items, setItems] = signal([]);
-    this.items = items; this.setItems = setItems;
+    const [nodes, setNodes] = signal(opts.nodes || []);   // root of the layer tree
+    this.nodes = nodes; this.setNodes = setNodes;
+    this.items = () => leavesOf(this.nodes());             // all data items, depth-first (flat)
+    this.visibleLeaves = () => visibleLeavesOf(this.nodes());
     const [projection, setProjection] = signal(opts.projection || 'equal-area');
     this.projection = projection; this.setProjection = setProjection;
-    // global render settings (read by renderers, so changes re-render reactively)
     const [roseBinWidth, setRoseBinWidth] = signal(opts.roseBinWidth || 10);
     this.roseBinWidth = roseBinWidth; this.setRoseBinWidth = setRoseBinWidth;
     const [contourMethod, setContourMethod] = signal(opts.contourMethod || 'fisher');
     this.contourMethod = contourMethod; this.setContourMethod = setContourMethod;
   }
 
-  add(item) { this.setItems([...this.items(), item]); return item; }
-  remove(item) { this.setItems(this.items().filter((i) => i !== item)); }
+  add(item) { this.setNodes([...this.nodes(), item]); return item; }
+  addGroup(name) { const g = new Group({ name: name || 'group' }); this.setNodes([...this.nodes(), g]); return g; }
+
+  // remove a node from anywhere in the tree (sets the affected list's signal)
+  remove(node) {
+    const rec = (list, set) => {
+      if (list.includes(node)) { set(list.filter((n) => n !== node)); return true; }
+      return list.some((n) => isGroup(n) && rec(n.children(), n.setChildren));
+    };
+    rec(this.nodes(), this.setNodes);
+  }
+
+  // parent Group of a node, or null if at root (undefined if absent)
+  parentOf(node) {
+    const rec = (list, parent) => {
+      if (list.includes(node)) return parent;
+      for (const n of list) if (isGroup(n)) { const r = rec(n.children(), n); if (r !== undefined) return r; }
+      return undefined;
+    };
+    const r = rec(this.nodes(), null);
+    return r === undefined ? null : r;
+  }
+
+  _contains(group, target) {
+    return group.children().some((n) => n === target || (isGroup(n) && this._contains(n, target)));
+  }
+
+  // move `node` into `parent` (null = root) at `index`; guards against cycles
+  move(node, parent, index) {
+    if (node === parent || (isGroup(node) && parent && this._contains(node, parent))) return;
+    this.remove(node);
+    const list = parent ? parent.children() : this.nodes();
+    const next = list.slice();
+    next.splice(index == null ? next.length : index, 0, node);
+    if (parent) parent.setChildren(next); else this.setNodes(next);
+  }
 
   contribute(space) {
     const out = [];
-    for (const it of this.items()) if (it.visible()) out.push(...it.contribute(space));
+    for (const it of this.visibleLeaves()) out.push(...it.contribute(space));
     return out;
   }
 }
 
 const PROJECT_FORMAT = 'osjs-project';
 
-/** Full project state → a plain JSON-able object (untracked snapshots). */
-export function serializeProject(project) {
+function serializeNode(n) {
+  if (isGroup(n)) {
+    return { kind: 'group', name: n.currentName(), visible: n.currentVisible(), expanded: n.currentExpanded(), children: n.currentChildren().map(serializeNode) };
+  }
   return {
-    format: PROJECT_FORMAT,
-    version: 1,
-    projection: project.projection(),
-    roseBinWidth: project.roseBinWidth(),
-    items: project.items().map((it) => ({
-      type: it.type,
-      name: it.currentName(),
-      visible: it.currentVisible(),
-      measurements: it.currentMeasurements(),
-      columns: it.currentColumns(),
-      style: it.currentStyle(),
-      params: it.currentParams(),
-      layers: it.currentLayers(),
-    })),
+    type: n.type, name: n.currentName(), visible: n.currentVisible(),
+    measurements: n.currentMeasurements(), columns: n.currentColumns(),
+    style: n.currentStyle(), params: n.currentParams(), layers: n.currentLayers(),
   };
 }
 
-/** Rebuild a project's items + settings from serializeProject() output. */
+/** Full project state (the layer tree + settings) → a plain JSON-able object. */
+export function serializeProject(project) {
+  return {
+    format: PROJECT_FORMAT, version: 2,
+    projection: project.projection(),
+    roseBinWidth: project.roseBinWidth(),
+    items: project.nodes().map(serializeNode),
+  };
+}
+
+// reverse of serializeNode; a missing `kind` means a (v1, flat) data item
+function buildNode(d) {
+  if (d.kind === 'group') return new Group({ name: d.name, visible: d.visible, expanded: d.expanded, children: (d.children || []).map(buildNode) });
+  return new (ITEM_TYPES[d.type] || PlaneSet)({
+    name: d.name, visible: d.visible, measurements: d.measurements,
+    columns: d.columns, style: d.style, params: d.params, layers: d.layers,
+  });
+}
+
+/** Rebuild a project's tree + settings from serializeProject() output (loads v1 flat files too). */
 export function loadProject(project, data) {
   if (!data || data.format !== PROJECT_FORMAT) throw new Error('not an OSJS project file');
   if (data.projection) project.setProjection(data.projection);
   if (data.roseBinWidth) project.setRoseBinWidth(data.roseBinWidth);
-  const items = (data.items || []).map((d) => new (ITEM_TYPES[d.type] || PlaneSet)({
-    name: d.name, visible: d.visible, measurements: d.measurements,
-    columns: d.columns, style: d.style, params: d.params, layers: d.layers,
-  }));
-  project.setItems(items);
-  return items;
+  const nodes = (data.items || []).map(buildNode);
+  project.setNodes(nodes);
+  return nodes;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, serializeProject, loadProject } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, Group, isGroup, serializeProject, loadProject } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
 import { parsePairs, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
@@ -136,6 +136,53 @@ test('ramp colour-by: numeric column drives colour + legend range', () => {
   assert.ok(/^rgb\(/.test(pts[0].style.color) && pts[0].style.color !== pts[2].style.color);
   const legend = ps.colorLegend();
   assert.deepEqual([legend.type, legend.min, legend.max], ['ramp', 0, 1]);
+});
+
+test('groups: move into a group, parentOf, and visibility cascade', () => {
+  const p = new Project();
+  const a = p.add(new PlaneSet({ name: 'a', measurements: [[120, 35]] }));
+  const b = p.add(new PoleSet({ name: 'b', measurements: [[210, 65]] }));
+  const g = p.addGroup('folder');
+  p.move(a, g, 0);                               // nest a inside g
+  assert.equal(p.parentOf(a), g);
+  assert.equal(p.parentOf(b), null);             // b still at root
+  assert.deepEqual(p.items().map((i) => i.name()), ['b', 'a']); // leaves DFS (b at root, a in g)
+
+  // hiding the group prunes its subtree from contribute, but items() still lists it
+  g.setVisible(false);
+  assert.deepEqual(p.visibleLeaves().map((i) => i.name()), ['b']);
+  assert.equal(p.items().length, 2);
+  g.setVisible(true);
+  assert.equal(p.visibleLeaves().length, 2);
+});
+
+test('groups: move guards against cycles (a group cannot go inside its own child)', () => {
+  const p = new Project();
+  const outer = p.addGroup('outer');
+  const inner = p.addGroup('inner');
+  p.move(inner, outer, 0);
+  p.move(outer, inner, 0);                        // illegal — would create a cycle
+  assert.equal(p.parentOf(outer), null);         // unchanged
+  assert.equal(p.parentOf(inner), outer);
+});
+
+test('nested groups round-trip through serialize → load', () => {
+  const p = new Project();
+  const g = p.addGroup('structures');
+  const a = p.add(new PlaneSet({ name: 'bedding', measurements: [[120, 35], [130, 40]] }));
+  p.move(a, g, 0);
+  g.setVisible(false);
+  const json = JSON.parse(JSON.stringify(serializeProject(p)));
+  assert.equal(json.items[0].kind, 'group');
+
+  const q = new Project();
+  loadProject(q, json);
+  const [grp] = q.nodes();
+  assert.ok(isGroup(grp) && grp instanceof Group);
+  assert.equal(grp.currentName(), 'structures');
+  assert.equal(grp.currentVisible(), false);
+  assert.equal(grp.currentChildren()[0].name(), 'bedding');
+  assert.equal(q.visibleLeaves().length, 0);     // hidden group → nothing contributes
 });
 
 test('project round-trips through serialize → load (geometry, style, columns, layers, params)', () => {

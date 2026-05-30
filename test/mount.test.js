@@ -107,6 +107,31 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('groups: a group nests items in the tree and gates their visibility', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const legendCount = () => root.querySelectorAll('.netlegend .lgitem').length;
+  const n0 = legendCount();
+  assert.ok(n0 >= 2, 'legend lists the seed datasets');
+
+  root.querySelector('.sect .sectbtn').click();   // + group
+  await tick();
+  const groupRow = [...root.querySelectorAll('.grp-row')];
+  assert.equal(groupRow.length, 1, 'a group row appears');
+
+  // nest the first dataset under the group (drag-drop is wired in the UI; drive the model directly here)
+  const g = project.nodes().find((n) => n.kind === 'group');
+  project.move(project.items()[0], g, 0);
+  await tick();
+  assert.ok(root.querySelector('.grp-kids .it'), 'the item now renders nested under the group');
+
+  // hiding the group removes its child from what the net draws
+  g.setVisible(false);
+  await tick();
+  assert.equal(legendCount(), n0 - 1, 'hiding the group drops its nested layer from the legend');
+  assert.equal(project.visibleLeaves().length, n0 - 1, 'and from contribute()');
+});
+
 test('table tab: shows the selected item and edits write through to the model', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);

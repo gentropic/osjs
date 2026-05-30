@@ -15,7 +15,7 @@ import { signal, effect } from '../../vendor/sideact/signals.js';
 import { h } from '../../vendor/sideact/dom.js';
 import { each } from '../../vendor/sideact/render.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { Project, ITEM_TYPES, serializeProject, loadProject } from '../core/model.js';
+import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
@@ -64,10 +64,14 @@ export function mountApp(root) {
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
   // ── persistence: autosave to localStorage; explicit save/open as a file ──
+  const touchTree = (list) => list.forEach((n) => {
+    n.name(); n.visible();
+    if (isGroup(n)) { n.expanded(); touchTree(n.children()); }
+    else { n.measurements(); n.style(); n.params(); n.layers(); n.columns(); }
+  });
   effect(() => {
-    const its = project.items();
-    its.forEach((it) => { it.measurements(); it.style(); it.params(); it.layers(); it.columns(); it.name(); it.visible(); });
-    project.projection(); project.roseBinWidth();           // subscribe to all state
+    touchTree(project.nodes());                              // subscribe to the whole tree
+    project.projection(); project.roseBinWidth();
     lsSet(LS_KEY, JSON.stringify(serializeProject(project)));
   });
   const saveProject = () => {
@@ -108,13 +112,13 @@ export function mountApp(root) {
   net.onHover = (d) => setCursor(d);
   net.onPick = (d) => {
     const it = selected();
-    if (!it) return;
+    if (!it || isGroup(it)) return;
     const pair = it.type === 'lines' ? conversions.dcosToLine(d) : conversions.dcosToPlane(d);
     it.setMeasurements([...it.measurements(), [Math.round(pair[0]), Math.round(pair[1])]]);
   };
   effect(() => document.body.classList.toggle('theme-dark', theme() === 'dark'));
 
-  // ── data tree ──
+  // ── data tree (nestable groups + data items, HTML5 drag-drop) ──
   const checkbox = (checked, onToggle, stop) => {
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.checked = !!checked;
@@ -122,7 +126,44 @@ export function mountApp(root) {
     if (stop) cb.onclick = (e) => e.stopPropagation();
     return cb;
   };
-  const row = (item) => {
+  let dragNode = null;
+  const reselectAfterRemove = (node) => { if (selected() === node) setSelected(project.items()[0] || null); };
+  // wire a tree row as a drag source + drop target. dropInto=true → reparent into
+  // a group; otherwise drop places the dragged node right after this one.
+  const wireDnD = (el, node, dropInto) => {
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => { dragNode = node; e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragover', (e) => { if (dragNode && dragNode !== node) { e.preventDefault(); e.stopPropagation(); el.classList.add('drop'); } });
+    el.addEventListener('dragleave', () => el.classList.remove('drop'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
+      const d = dragNode; dragNode = null;
+      if (!d || d === node) return;
+      if (dropInto) project.move(d, node, null);                         // into the group
+      else { const p = project.parentOf(node); const list = p ? p.children() : project.nodes(); project.move(d, p, list.indexOf(node) + 1); }
+    });
+  };
+  const nodeRow = (node) => (isGroup(node) ? groupRow(node) : itemRow(node));
+  const renderNodes = (nodesFn) => each(nodesFn, nodeRow, (n) => n.id);
+  function groupRow(group) {
+    const vis = checkbox(group.currentVisible(), (v) => group.setVisible(v), true);
+    const kidsWrap = h`<div class="kidswrap grp-kids">${renderNodes(group.children)}</div>`;
+    effect(() => { kidsWrap.style.display = group.expanded() ? 'block' : 'none'; });
+    const rowEl = h`<div class=${() => (selected() === group ? 'it grp-row sel' : 'it grp-row')} onclick=${() => setSelected(group)}>
+        <button class="caret" onclick=${(e) => { e.stopPropagation(); group.setExpanded(!group.currentExpanded()); }}>${() => (group.expanded() ? '▾' : '▸')}</button>
+        ${vis}<span class="folder">▣</span>
+        <span class="nm">${() => group.name()}</span>
+        <span class="ty">group</span>
+        <button class="rm" title="remove group (keeps children at root)" onclick=${(e) => {
+          e.stopPropagation(); const p = project.parentOf(group);
+          group.currentChildren().slice().reverse().forEach((c) => project.move(c, p, 0));   // lift children out
+          project.remove(group); reselectAfterRemove(group);
+        }}>×</button>
+      </div>`;
+    wireDnD(rowEl, group, true);
+    return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
+  }
+  function itemRow(item) {
     const [expanded, setExpanded] = signal(false);
     const vis = checkbox(item.currentVisible(), (v) => item.setVisible(v), true);
     const kids = document.createElement('div');
@@ -133,22 +174,18 @@ export function mountApp(root) {
     }
     const kidsWrap = h`<div class="kidswrap">${kids}</div>`;
     effect(() => { kidsWrap.style.display = expanded() ? 'block' : 'none'; });
-    return h`<div class="ds">
-      <div class=${() => (selected() === item ? 'it sel' : 'it')} onclick=${() => setSelected(item)}>
+    const rowEl = h`<div class=${() => (selected() === item ? 'it sel' : 'it')} onclick=${() => setSelected(item)}>
         <button class="caret" onclick=${(e) => { e.stopPropagation(); setExpanded((v) => !v); }}>${() => (expanded() ? '▾' : '▸')}</button>
         ${vis}
         <span class="sw" style=${() => ({ background: item.style().color || '#888' })}></span>
         <span class="nm">${() => item.name()}</span>
         <span class="ty">${item.type}</span>
-        <button class="rm" title="remove" onclick=${(e) => {
-          e.stopPropagation(); project.remove(item);
-          if (selected() === item) setSelected(project.items()[0] || null);
-        }}>×</button>
-      </div>
-      ${kidsWrap}
-    </div>`;
-  };
-  const list = each(project.items, row, (it) => it.id);
+        <button class="rm" title="remove" onclick=${(e) => { e.stopPropagation(); project.remove(item); reselectAfterRemove(item); }}>×</button>
+      </div>`;
+    wireDnD(rowEl, item, false);
+    return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
+  }
+  const list = renderNodes(project.nodes);
 
   // ── add-data ──
   const [adding, setAdding] = signal(false);
@@ -366,6 +403,14 @@ export function mountApp(root) {
   effect(() => { propsHost.replaceChildren(propsFor(selected())); });
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;
+    if (isGroup(item)) {
+      return h`<div class="pbody">
+        <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
+        <div class="ptype">group · ${() => item.children().length} layers</div>
+        ${field('visible', chips(chip('show', () => item.visible(), () => item.setVisible(!item.currentVisible()))))}
+        <div class="muted">Drag layers onto a group to nest them; the group's visibility gates everything inside.</div>
+      </div>`;
+    }
     return h`<div class="pbody">
       <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
       <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
@@ -414,7 +459,7 @@ export function mountApp(root) {
     return h`<div class="lgitem"><span class="sw" style=${{ background: item.style().color || '#888' }}></span><span>${item.name()}</span></div>`;
   }
   effect(() => {
-    const vis = project.items().filter((it) => it.visible());
+    const vis = project.visibleLeaves();
     if (vis.length) legendHost.replaceChildren(h`<div class="lg">${vis.map(legendRow)}</div>`);
     else legendHost.replaceChildren();
   });
@@ -425,7 +470,7 @@ export function mountApp(root) {
   const tableHost = document.createElement('div');
   // Rebuilds on selection / edit-mode / structural change only — cell edits write
   // through to the model (read untracked here) so they don't rebuild + lose focus.
-  effect(() => { tableVer(); const it = selected(); tableHost.replaceChildren(it ? dataTable(it, tableEdit()) : h`<div class="muted">no dataset selected</div>`); });
+  effect(() => { tableVer(); const it = selected(); tableHost.replaceChildren(it && !isGroup(it) ? dataTable(it, tableEdit()) : h`<div class="muted">${() => (isGroup(selected()) ? 'groups have no data table' : 'no dataset selected')}</div>`); });
   function dataTable(item, edit) {
     const geom = item.type === 'lines' ? ['trend', 'plunge'] : ['dip dir', 'dip'];
     const cols = item.currentColumns();
@@ -503,8 +548,9 @@ export function mountApp(root) {
     </header>
     <div class="body">
       <aside class="side">
-        <div class="sect">data <span class="count">${() => project.items().length}</span></div>
-        <div class="list">${list}</div>
+        <div class="sect">data <span class="count">${() => project.items().length}</span>
+          <button class="sectbtn" title="add a group" onclick=${() => setSelected(project.addGroup('group'))}>＋ group</button></div>
+        <div class="list" ondragover=${(e) => { if (dragNode) e.preventDefault(); }} ondrop=${(e) => { e.preventDefault(); if (dragNode) { project.move(dragNode, null, project.nodes().length); dragNode = null; } }}>${list}</div>
         ${addHost}
       </aside>
       <main class="main">
