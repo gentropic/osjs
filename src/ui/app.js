@@ -139,72 +139,113 @@ export function mountApp(root) {
       <button onclick=${() => setAdding(false)}>cancel</button></div></div>`;
   }
 
-  // ── properties (rich) ──
-  const propsHost = document.createElement('div');
-  propsHost.className = 'props';
-  effect(() => { propsHost.replaceChildren(propsFor(selected())); });
-  // a segmented (radio-like) control over style; reads the live snapshot.
-  // NB: function declaration (not const) so it is hoisted — the effect above
-  // runs synchronously on creation and calls propsFor → styleSeg before this
-  // line is reached, which would hit the TDZ if it were a `const`.
-  function styleSeg(item, key, def, opts) {
-    const cur = () => item.style()[key] ?? def;
-    const set = (v) => item.setStyle({ ...item.currentStyle(), [key]: v });
+  // ── reactive inspector building blocks ──
+  // All are `function` declarations (hoisted): the props effect below runs
+  // synchronously on creation and reaches these before their line — a `const`
+  // arrow would be in its TDZ. Each returns nodes whose class/state bindings
+  // read item signals, so they stay live WITHOUT rebuilding propsFor (which
+  // would steal focus from number inputs).
+  function seg(cur, set, opts) {
     return h`<span class="grp small">${opts.map(([v, l]) =>
       h`<button class=${() => (cur() === v ? 'seg on' : 'seg')} onclick=${() => set(v)}>${l}</button>`)}</span>`;
   }
-  function propsFor(item) {
-    if (!item) return h`<div class="muted">no dataset selected</div>`;
+  function styleSeg(item, key, def, opts) {
+    return seg(() => item.style()[key] ?? def, (v) => item.setStyle({ ...item.currentStyle(), [key]: v }), opts);
+  }
+  function paramSeg(item, key, def, opts) {
+    return seg(() => item.params()[key] ?? def, (v) => item.setParams({ [key]: v }), opts);
+  }
+  function chip(label, on, onClick) {
+    return h`<button class=${() => (on() ? 'chip on' : 'chip')} onclick=${onClick}>${label}</button>`;
+  }
+  function layerChip(item, key, label) {
+    return chip(label, () => item.layers()[key], () => item.toggleLayer(key));
+  }
+  function plotSection(item) {
+    if (item.type !== 'planes') return '';
+    return h`<div class="istit">plot as</div>
+      <label>elements <span class="chips">${layerChip(item, 'great', 'great circles')}${layerChip(item, 'poles', 'poles')}</span></label>`;
+  }
+  function densitySection(item) {
+    const P = item.currentParams();
+    const mode = () => { const L = item.layers(); return L.heatmap && L.contours ? 'both' : L.contours ? 'lines' : L.heatmap ? 'fill' : 'off'; };
+    const setMode = (m) => { item.setLayer('contours', m === 'lines' || m === 'both'); item.setLayer('heatmap', m === 'fill' || m === 'both'); };
+    return h`<div class="istit">density / contours</div>
+      <label>show ${seg(mode, setMode, [['off', 'off'], ['lines', 'lines'], ['fill', 'fill'], ['both', 'both']])}</label>
+      <label>method ${paramSeg(item, 'cMethod', 'fisher', [['fisher', 'Fisher'], ['kamb', 'Kamb']])}</label>
+      <label>smoothing σ <input type="number" min="2" max="40" step="1" placeholder="auto" value=${P.cSigma ?? ''}
+        oninput=${(e) => item.setParams({ cSigma: +e.target.value || null })}></label>
+      <label>levels <input type="number" min="1" max="8" step="1" value=${P.cLevels}
+        oninput=${(e) => item.setParams({ cLevels: Math.max(1, +e.target.value || 1) })}></label>`;
+  }
+  function meanSection(item) {
+    return h`<div class="istit">mean / confidence</div>
+      <label>mean vector <span class="chips">${layerChip(item, 'mean', 'show')}</span></label>
+      <label>α₉₅ cone <span class="chips">${chip('show', () => item.params().meanCone, () => item.setParams({ meanCone: !item.currentParams().meanCone }))}</span></label>`;
+  }
+  function eigenSection(item) {
+    const cell = (i, key, label) => chip(label, () => item.params()[key][i], () => {
+      const a = item.currentParams()[key].slice(); a[i] = !a[i]; item.setParams({ [key]: a });
+    });
+    return h`<div class="istit">eigenvectors</div>
+      <label>show <span class="chips">${layerChip(item, 'eigen', 'on')}</span></label>
+      ${[0, 1, 2].map((i) => h`<label>V${i + 1} <span class="chips">${cell(i, 'eigPole', 'pole')}${cell(i, 'eigPlane', 'great circle')}</span></label>`)}`;
+  }
+  function symbolSection(item) {
     const st = item.currentStyle();
     const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
     const opacityPct = Math.round((st.opacity == null ? 1 : st.opacity) * 100);
-
-    // geometry controls differ per item type
+    const out = h`<span class="rngval">${opacityPct}%</span>`;
     const geom = item.type === 'planes'
       ? h`<label>line width <input type="number" min="0.2" max="4" step="0.2" value=${st.width ?? 1} oninput=${(e) => set({ width: +e.target.value })}></label>
           <label>line style ${styleSeg(item, 'lineStyle', 'solid', [['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])}</label>`
       : h`<label>point size <input type="number" min="1" max="12" step="0.5" value=${st.size ?? 4} oninput=${(e) => set({ size: +e.target.value })}></label>
           <label>marker ${styleSeg(item, 'pointFill', 'filled', [['filled', 'filled'], ['open', 'open']])}</label>
           <label>edge width <input type="number" min="0" max="3" step="0.2" value=${st.edgeWidth ?? 0} oninput=${(e) => set({ edgeWidth: +e.target.value })}></label>`;
-
-    const s = item.stats();
-    let statsNode;
-    if (s) {
-      const [mt, mp] = conversions.dcosToLine(s.fisher.mean);
-      const k = (s.eigenvalues[0] - s.eigenvalues[1]) || 0, e2 = (s.eigenvalues[1] - s.eigenvalues[2]) || 0;
-      const srow = (key, v) => h`<div class="srow"><span>${key}</span><b>${v}</b></div>`;
-      statsNode = h`<div class="stats">
-        ${srow('S₁ S₂ S₃', s.eigenvalues.map((v) => v.toFixed(3)).join('  '))}
-        ${srow('strength (S₁−S₂, S₂−S₃)', `${k.toFixed(3)}  ${e2.toFixed(3)}`)}
-        ${srow('Woodcock K · C', `${s.K.toFixed(2)} · ${s.C.toFixed(2)}`)}
-        ${srow('Vollmer P G R', `${s.P.toFixed(2)} ${s.G.toFixed(2)} ${s.R.toFixed(2)}`)}
-        ${srow('fabric', s.K > 1 ? 'cluster' : s.K < 1 ? 'girdle' : 'uniform')}
-        ${srow('Fisher mean', `${az(mt)}/${p2(mp)}`)}
-        ${srow('κ · α₉₅ · n', `${s.fisher.kappa.toFixed(1)} · ${s.fisher.alpha95.toFixed(1)}° · ${s.fisher.n}`)}
-      </div>`;
-    } else {
-      statsNode = h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
-    }
-    return h`<div class="pbody">
-      <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
-      <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
-      <div class="istit">style</div>
+    return h`<div class="istit">${item.type === 'planes' ? 'lines / poles' : 'symbols'}</div>
       <label>color <input type="color" value=${st.color || '#888888'} oninput=${(e) => set({ color: e.target.value })}></label>
       ${geom}
-      ${(() => {
-        const out = h`<span class="rngval">${opacityPct}%</span>`;
-        return h`<label>opacity <input class="rng" type="range" min="10" max="100" step="5" value=${opacityPct}
-          oninput=${(e) => { out.textContent = `${e.target.value}%`; set({ opacity: +e.target.value / 100 }); }}>${out}</label>`;
-      })()}
-      <div class="istit">statistics</div>
-      ${statsNode}
+      <label>opacity <input class="rng" type="range" min="10" max="100" step="5" value=${opacityPct}
+        oninput=${(e) => { out.textContent = `${e.target.value}%`; set({ opacity: +e.target.value / 100 }); }}>${out}</label>`;
+  }
+  function statsSection(item) {
+    const s = item.stats();
+    if (!s) return h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
+    const [mt, mp] = conversions.dcosToLine(s.fisher.mean);
+    const k = (s.eigenvalues[0] - s.eigenvalues[1]) || 0, e2 = (s.eigenvalues[1] - s.eigenvalues[2]) || 0;
+    const srow = (key, v) => h`<div class="srow"><span>${key}</span><b>${v}</b></div>`;
+    return h`<div class="stats">
+      ${srow('S₁ S₂ S₃', s.eigenvalues.map((v) => v.toFixed(3)).join('  '))}
+      ${srow('strength (S₁−S₂, S₂−S₃)', `${k.toFixed(3)}  ${e2.toFixed(3)}`)}
+      ${srow('Woodcock K · C', `${s.K.toFixed(2)} · ${s.C.toFixed(2)}`)}
+      ${srow('Vollmer P G R', `${s.P.toFixed(2)} ${s.G.toFixed(2)} ${s.R.toFixed(2)}`)}
+      ${srow('fabric', s.K > 1 ? 'cluster' : s.K < 1 ? 'girdle' : 'uniform')}
+      ${srow('Fisher mean', `${az(mt)}/${p2(mp)}`)}
+      ${srow('κ · α₉₅ · n', `${s.fisher.kappa.toFixed(1)} · ${s.fisher.alpha95.toFixed(1)}° · ${s.fisher.n}`)}
     </div>`;
   }
 
-  // ── settings (global) ──
-  const methodSeg = (m, label) => h`<button class=${() => (project.contourMethod() === m ? 'seg on' : 'seg')} onclick=${() => project.setContourMethod(m)}>${label}</button>`;
+  // ── properties (rich, per render-element) ──
+  const propsHost = document.createElement('div');
+  propsHost.className = 'props';
+  effect(() => { propsHost.replaceChildren(propsFor(selected())); });
+  function propsFor(item) {
+    if (!item) return h`<div class="muted">no dataset selected</div>`;
+    return h`<div class="pbody">
+      <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
+      <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
+      ${plotSection(item)}
+      ${symbolSection(item)}
+      ${densitySection(item)}
+      ${meanSection(item)}
+      ${eigenSection(item)}
+      <div class="istit">statistics</div>
+      ${statsSection(item)}
+    </div>`;
+  }
+
+  // ── settings (global, plot-level) ──
   const settings = h`<div class="settings">
-    <label>density <span class="grp small">${methodSeg('fisher', 'Fisher')}${methodSeg('kamb', 'Kamb')}</span></label>
     <label>rose bin <select onchange=${(e) => project.setRoseBinWidth(+e.target.value)}>
       ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === 10 ? 'selected' : null}>${w}°</option>`)}
     </select></label>

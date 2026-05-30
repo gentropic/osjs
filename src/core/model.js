@@ -16,10 +16,22 @@
 
 import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { point, greatCircle, text, contour, heatmap } from './primitives.js';
+import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
 const { conversions, statistics } = bearing;
-const { meanVector, principalAxes } = statistics;
+const { meanVector, principalAxes, fisherStats } = statistics;
+
+// per-element tuning (contour method/smoothing/levels, mean confidence cone,
+// per-eigenvector display mode) — separate from on/off layers and from style.
+const DEFAULT_PARAMS = {
+  cMethod: 'fisher', cSigma: null, cLevels: 4,       // density: method, σ (auto if null), # levels
+  meanCone: false,                                   // draw the α95 confidence cone
+  eigPole: [true, true, true], eigPlane: [false, false, true], // V1..V3 as point / great circle
+};
+const contourLevels = (method, n) => {
+  const step = method === 'kamb' ? 2 : 2;            // σ (Kamb) or MUD (Fisher)
+  return Array.from({ length: Math.max(1, n) }, (_, i) => (i + 1) * step);
+};
 
 let _seq = 0;
 const uid = (p) => `${p || 'item'}${++_seq}`;
@@ -56,6 +68,14 @@ export class DataItem {
     this.layers = layers;
     this.currentLayers = () => this._lv;
     this.toggleLayer = (k) => { this._lv = { ...this._lv, [k]: !this._lv[k] }; setLayersSig(this._lv); };
+    this.setLayer = (k, v) => { this._lv = { ...this._lv, [k]: !!v }; setLayersSig(this._lv); };
+
+    // params — per-element tuning (contour/mean/eigen detail)
+    this._pv = { ...DEFAULT_PARAMS, ...(opts.params || {}) };
+    const [params, setParamsSig] = signal(this._pv);
+    this.params = params;
+    this.currentParams = () => this._pv;
+    this.setParams = (patch) => { this._pv = { ...this._pv, ...patch }; setParamsSig(this._pv); };
   }
 
   _convert(_pair) { return [0, 0, -1]; }  // subclass: a degree pair → unit vector
@@ -66,7 +86,7 @@ export class DataItem {
 
   // Layer-aware geometric contribution (shared by all item types).
   _net() {
-    const L = this.layers(), st = this.style(), d = this.dcos(), out = [];
+    const L = this.layers(), st = this.style(), P = this.params(), d = this.dcos(), out = [];
     const src = (i) => ({ item: this.id, datum: i });
     if (this.type === 'planes') {
       if (L.great) d.forEach((p, i) => out.push(greatCircle(p, st, src(i))));
@@ -74,13 +94,25 @@ export class DataItem {
     } else if (L.points !== false) {
       d.forEach((p, i) => out.push(point(p, st, src(i))));
     }
-    if (L.heatmap && d.length >= 3) out.push(heatmap(d, {}, st, { item: this.id }));
-    if (L.contours && d.length >= 3) out.push(contour(d, {}, st, { item: this.id }));
-    if (L.mean && d.length >= 1) out.push(point(meanVector(d), { ...st, size: (st.size || 4) + 3 }, { item: this.id, mean: true }));
+    // density — method / smoothing / levels are tunable per item
+    const dOpts = { method: P.cMethod };
+    if (P.cSigma) dOpts.sigma = P.cSigma;
+    if (L.heatmap && d.length >= 3) out.push(heatmap(d, dOpts, st, { item: this.id }));
+    if (L.contours && d.length >= 3) out.push(contour(d, { ...dOpts, levels: contourLevels(P.cMethod, P.cLevels) }, st, { item: this.id }));
+    // mean vector (+ optional α95 confidence cone)
+    if (L.mean && d.length >= 1) {
+      out.push(point(meanVector(d), { ...st, size: (st.size || 4) + 3 }, { item: this.id, mean: true }));
+      if (P.meanCone && d.length >= 2) {
+        const f = fisherStats(d);
+        if (f.alpha95 > 0) out.push(smallCircle(f.mean, f.alpha95, st, { item: this.id, cone: true }));
+      }
+    }
+    // eigenvectors — each as a point (pole) and/or great circle, independently
     if (L.eigen && d.length >= 2) {
       principalAxes(d).eigenvectors.forEach((v, i) => {
-        out.push(point(v, { ...st, size: 5 }, { item: this.id }));
-        out.push(text(v, 'V' + (i + 1), { dx: 7, dy: -5, fontSize: 10, fill: st.color || '#333' }, { item: this.id }));
+        if (P.eigPole[i]) out.push(point(v, { ...st, size: 5 }, { item: this.id, eigen: i }));
+        if (P.eigPlane[i]) out.push(greatCircle(v, st, { item: this.id, eigen: i }));
+        if (P.eigPole[i] || P.eigPlane[i]) out.push(text(v, 'V' + (i + 1), { dx: 7, dy: -5, fontSize: 10, fill: st.color || '#333' }, { item: this.id }));
       });
     }
     return out;

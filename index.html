@@ -147,7 +147,13 @@
              text-transform: uppercase; font-weight: 600; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
     .props label .rng { flex: 1; min-width: 0; accent-color: var(--cyan); }
     .props label .rngval { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); min-width: 34px; text-align: right; }
-    .props label .grp.small { margin-left: auto; }
+    .props label .grp.small, .props label .chips { margin-left: auto; }
+    /* toggle chips (independent on/off, vs the mutually-exclusive .seg groups) */
+    .chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+    .chip { padding: 3px 8px; font-size: 10px; letter-spacing: .03em; border: 1px solid var(--line-2);
+            border-radius: 4px; background: var(--panel); color: var(--ink-dim); cursor: pointer; }
+    .chip:hover { color: var(--ink); border-color: var(--ink-dim); }
+    .chip.on { background: var(--cyan); border-color: var(--cyan); color: var(--on-accent); font-weight: 600; }
 
     /* inspector: rich properties + settings */
     .nameedit { font: inherit; font-weight: 700; font-size: 14px; border: 0; border-bottom: 1px solid transparent;

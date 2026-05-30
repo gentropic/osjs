@@ -67,10 +67,10 @@ export class NetRenderer {
     switch (p.kind) {
       case 'point': { const [t, pl] = conversions.dcosToLine(p.dir); sn.line(t, pl, pointStyle(st, item)); break; }
       case 'greatCircle': { const [dd, dip] = conversions.dcosToPlane(p.pole); sn.plane(dd, dip, lineStyle(st, item)); break; }
-      case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, lineStyle(st, item)); break; }
+      case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, { ...lineStyle(st, item), fill: 'none', 'stroke-dasharray': '5 4' }); break; }
       case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
-      case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, method: this.project.contourMethod(), ...p.opts }); break;
-      case 'heatmap': sn.heatmap(p.dcos, { color: (t) => rgba(st.color, 0.1 + 0.8 * t), method: this.project.contourMethod(), ...p.opts }); break;
+      case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts }); break;
+      case 'heatmap': sn.heatmap(p.dcos, { color: (t) => rgba(st.color, 0.1 + 0.8 * t), ...p.opts }); break;
       // polyline / fill / raster: TODO (bearing primitive-level methods would help).
       default: break;
     }
