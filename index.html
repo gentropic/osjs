@@ -21,6 +21,15 @@
       --ui:'Barlow',system-ui,sans-serif;
       --mono:'Space Mono','SFMono-Regular',ui-monospace,monospace;
     }
+    body.theme-dark {
+      /* flight-deck dark (ported from OS3) */
+      --bg:#0a0d11; --panel:#12161c; --panel-2:#171c23; --raised:#1c222b;
+      --line:#283039; --line-2:#333d49;
+      --ink:#cad4df; --ink-dim:#6f7d8d; --ink-faint:#48535f;
+      --amber:#f6b14a; --accent-text:#f6b14a; --cyan:#5fd0c5; --cyan-text:#5fd0c5;
+      --on-accent:#0a0d11;
+      --canvas-bg:#0a0d11; --canvas-grid:rgba(255,255,255,.014); --vignette:#11161d;
+    }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 13px;
@@ -32,7 +41,25 @@
     *::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: padding-box; }
     *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
 
-    .osjs-app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+    .osjs-app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+    button { font-family: var(--ui); color: var(--ink); background: transparent; border: 0; cursor: pointer; }
+
+    /* header controls */
+    .grp { display: flex; align-items: center; gap: 1px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+    .seg { padding: 5px 11px; font-size: 11px; letter-spacing: .06em; color: var(--ink-dim); background: var(--panel); }
+    .seg:hover { color: var(--ink); }
+    .seg.on { color: var(--on-accent); background: var(--amber); font-weight: 600; }
+    .btn { padding: 5px 11px; font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+           border: 1px solid var(--line-2); border-radius: 5px; color: var(--ink-dim); background: var(--panel); }
+    .btn:hover { color: var(--ink); border-color: var(--ink-dim); }
+    .btn.on { color: var(--on-accent); background: var(--cyan); border-color: var(--cyan); font-weight: 600; }
+    .btn.icon { padding: 4px 9px; font-size: 13px; text-transform: none; }
+
+    /* status footer */
+    .statusbar { display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 14px;
+                 background: var(--panel); border-top: 1px solid var(--line);
+                 font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+    .statusbar .cnt { color: var(--ink-faint); }
 
     /* header / brand */
     .topbar { display: flex; align-items: center; gap: 14px; padding: 0 14px; height: 44px;

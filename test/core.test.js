@@ -8,7 +8,7 @@ test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
   assert.equal(p.kind, 'greatCircle');
   assert.deepEqual(p.source, { item: 'a', datum: 2 });
-  assert.equal(KINDS.length, 8);
+  assert.equal(KINDS.length, 9);
 });
 
 test('PlaneSet defaults to great circles only (poles layer off)', () => {

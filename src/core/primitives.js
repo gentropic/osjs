@@ -37,4 +37,7 @@ export const raster = (grid, style, source) => prim('raster', { grid }, style, s
 /** Density contour lines over a set of directions (renderer owns the kernel). */
 export const contour = (dcos, opts, style, source) => prim('contour', { dcos, opts: opts || {} }, style, source);
 
-export const KINDS = ['point', 'polyline', 'greatCircle', 'smallCircle', 'fill', 'text', 'raster', 'contour'];
+/** Filled density raster (heatmap) over a set of directions. */
+export const heatmap = (dcos, opts, style, source) => prim('heatmap', { dcos, opts: opts || {} }, style, source);
+
+export const KINDS = ['point', 'polyline', 'greatCircle', 'smallCircle', 'fill', 'text', 'raster', 'contour', 'heatmap'];

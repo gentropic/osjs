@@ -16,7 +16,7 @@
 
 import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { point, greatCircle, text, contour } from './primitives.js';
+import { point, greatCircle, text, contour, heatmap } from './primitives.js';
 
 const { conversions, statistics } = bearing;
 const { meanVector, principalAxes } = statistics;
@@ -70,6 +70,7 @@ export class DataItem {
     } else if (L.points !== false) {
       d.forEach((p, i) => out.push(point(p, st, src(i))));
     }
+    if (L.heatmap && d.length >= 3) out.push(heatmap(d, {}, st, { item: this.id }));
     if (L.contours && d.length >= 3) out.push(contour(d, {}, st, { item: this.id }));
     if (L.mean && d.length >= 1) out.push(point(meanVector(d), { ...st, size: (st.size || 4) + 3 }, { item: this.id, mean: true }));
     if (L.eigen && d.length >= 2) {
@@ -105,6 +106,7 @@ export class DataItem {
 }
 
 const COMMON_LAYERS = [
+  { key: 'heatmap', label: 'density (fill)', default: false },
   { key: 'contours', label: 'contours', default: false },
   { key: 'mean', label: 'mean', default: false },
   { key: 'eigen', label: 'eigenvectors', default: false },

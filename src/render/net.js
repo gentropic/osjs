@@ -1,14 +1,13 @@
 /**
  * @module render/net — the stereonet renderer (one plot space).
  *
- * Consumes the Project's `contribute('net')` primitives and draws them with
- * @gcu/bearing. Bearing's Stereonet already keeps a retained item scene that
- * diffs to the DOM, so we delegate diffing to it — we do NOT reimplement a
- * scene graph here. Arcball drag rotates the live element with no full redraw.
+ * Consumes the Project's contribute('net') primitives and draws them with
+ * @gcu/bearing, delegating DOM diffing to bearing's retained scene. Rebuilds the
+ * Stereonet when the projection changes. Pointer handling distinguishes hover
+ * (→ onHover, for the cursor read-out), drag (arcball rotation), and click
+ * (→ onPick when pickMode is on, for click-to-add measurements).
  *
- * v0: rebuilds bearing's item list each render() (bearing still diffs within
- * render). A later pass can map primitives → persistent bearing items keyed by
- * primitive.source for finer incrementality.
+ * Hooks set by the host: net.onHover(dcos|null), net.onPick(dcos), net.pickMode.
  */
 
 import * as bearing from '../../vendor/bearing.mjs';
@@ -18,20 +17,43 @@ const { Stereonet, conversions, mat3 } = bearing;
 const pointStyle = (st) => ({ fill: st.color || st.fill, stroke: st.stroke, r: st.size, class: st.class });
 const lineStyle = (st) => ({ stroke: st.color || st.stroke, 'stroke-width': st.width, class: st.class });
 
+// hex "#rrggbb" → "rgba(r,g,b,a)"
+function rgba(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '#888888');
+  const [r, g, b] = m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [136, 136, 136];
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 export class NetRenderer {
   constructor(project, opts = {}) {
     this.project = project;
-    this.sn = new Stereonet({ size: opts.size || 540, projection: project.projection(), classPrefix: 'osjs' });
-    this._el = this.sn.element();
-    this._wireArcball();
+    this._size = opts.size || 540;
+    this.pickMode = false;
+    this.onHover = null;
+    this.onPick = null;
+    this._proj = null;
+    this._rebuild(project.projection());
   }
 
   get element() { return this._el; }
 
+  _rebuild(projection) {
+    this._proj = projection;
+    const next = new Stereonet({ size: this._size, projection, classPrefix: 'osjs' });
+    const el = next.element();
+    if (this._el && this._el.parentNode) this._el.replaceWith(el);
+    this.sn = next;
+    this._el = el;
+    this._wirePointer();
+  }
+
   render() {
+    const proj = this.project.projection();
+    if (proj !== this._proj) this._rebuild(proj);
     const sn = this.sn;
     sn.clear();
     sn.clearContours();
+    sn.clearHeatmap();
     for (const p of this.project.contribute('net')) this._draw(p);
     sn.render();
   }
@@ -39,58 +61,53 @@ export class NetRenderer {
   _draw(p) {
     const sn = this.sn, st = p.style || {};
     switch (p.kind) {
-      case 'point': {
-        const [t, pl] = conversions.dcosToLine(p.dir);
-        sn.line(t, pl, pointStyle(st)); break;
-      }
-      case 'greatCircle': {
-        const [dd, dip] = conversions.dcosToPlane(p.pole);
-        sn.plane(dd, dip, lineStyle(st)); break;
-      }
-      case 'smallCircle': {
-        const [t, pl] = conversions.dcosToLine(p.axis);
-        sn.cone(t, pl, p.angle, lineStyle(st)); break;
-      }
-      case 'text': {
-        const [t, pl] = conversions.dcosToLine(p.dir);
-        sn.text(t, pl, p.content, st); break;
-      }
-      case 'contour': {
-        // bearing holds a single contour layer, so the last contour primitive
-        // wins if multiple datasets enable contours (a known v0 limitation).
-        sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts });
-        break;
-      }
-      // polyline / fill / raster: TODO — motivates a couple of primitive-level
-      // methods on bearing (point-at-dcos, polyline3d) so it's a cleaner backend.
+      case 'point': { const [t, pl] = conversions.dcosToLine(p.dir); sn.line(t, pl, pointStyle(st)); break; }
+      case 'greatCircle': { const [dd, dip] = conversions.dcosToPlane(p.pole); sn.plane(dd, dip, lineStyle(st)); break; }
+      case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, lineStyle(st)); break; }
+      case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
+      case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts }); break;
+      case 'heatmap': sn.heatmap(p.dcos, { color: (t) => rgba(st.color, 0.1 + 0.8 * t), ...p.opts }); break;
+      // polyline / fill / raster: TODO (bearing primitive-level methods would help).
       default: break;
     }
   }
 
-  // Pointer-event arcball — the lesson learned in bearing's demo.
-  _wireArcball() {
+  _wirePointer() {
     const el = this._el, sn = this.sn;
-    el.style.cursor = 'grab';
     el.style.touchAction = 'none';
-    let cur = null;
+    let cur = null, moved = false;
     const toSvg = (e) => {
       const r = el.getBoundingClientRect();
       const k = sn.size / r.width;
       return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
-    el.addEventListener('pointerdown', (e) => {
-      cur = toSvg(e); el.setPointerCapture?.(e.pointerId); el.style.cursor = 'grabbing'; e.preventDefault();
-    });
     el.addEventListener('pointermove', (e) => {
-      if (!cur) return;
-      const n = toSvg(e);
-      const arc = sn.arcball(cur.x, cur.y, n.x, n.y);
-      sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
-      sn.updateContours(); sn.render();
-      cur = n;
+      const p = toSvg(e);
+      if (cur) {                                   // dragging → arcball
+        if (Math.hypot(p.x - cur.x, p.y - cur.y) > 1) moved = true;
+        const arc = sn.arcball(cur.x, cur.y, p.x, p.y);
+        sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
+        sn.updateContours(); sn.render();
+        cur = p;
+      } else if (this.onHover) {                   // hover → read-out
+        this.onHover(sn.unproject(p.x, p.y));
+      }
     });
-    const end = () => { cur = null; el.style.cursor = 'grab'; };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      cur = toSvg(e); moved = false; el.setPointerCapture?.(e.pointerId); e.preventDefault();
+    });
+    el.addEventListener('pointerup', () => {
+      if (cur && !moved && this.pickMode && this.onPick) {
+        const d = sn.unproject(cur.x, cur.y);
+        if (d) this.onPick(d);
+      }
+      cur = null;
+    });
+    el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
+    this._syncCursor();
   }
+
+  _syncCursor() { this._el.style.cursor = this.pickMode ? 'crosshair' : 'grab'; }
+  setPickMode(on) { this.pickMode = on; this._syncCursor(); }
 }
