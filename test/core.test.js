@@ -129,6 +129,16 @@ test('categorical colour-by: distinct classes get distinct per-datum colours', (
   assert.deepEqual(legend.entries.map(([v]) => v), ['A', 'B']);
 });
 
+test('rgb colour-by: literal colours read straight from a column', () => {
+  const ps = new PoleSet({
+    measurements: [[210, 65], [220, 60]],
+    columns: [{ name: 'col', values: ['#ff0000', 'rgb(0,128,0)'] }],
+    style: { colorMode: 'rgb', colorBy: 0 },
+  });
+  const pts = ps.contribute('net').filter((p) => p.kind === 'point');
+  assert.deepEqual(pts.map((p) => p.style.color), ['#ff0000', 'rgb(0,128,0)']);
+});
+
 test('ramp colour-by: numeric column drives colour + legend range', () => {
   const ps = new PoleSet({
     measurements: [[210, 65], [220, 60], [200, 70]],

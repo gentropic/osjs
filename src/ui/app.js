@@ -499,16 +499,18 @@ export function mountApp(root) {
   }
   function colorBySection(item) {
     const cols = item.currentColumns();
-    if (!cols.length) return '';
     const st = item.currentStyle();
     const setS = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
-    const colSel = colSelect(cols, st.colorBy ?? 0, false, (v) => setS({ colorBy: v }));
+    // always shown — class/ramp/rgb need a data column, so guide the user when there is none
+    const colCtl = cols.length
+      ? colSelect(cols, st.colorBy ?? 0, false, (v) => setS({ colorBy: v }))
+      : h`<span class="muted">none — add one via table → edit → ＋ column, or import a CSV column</span>`;
     const rampSel = h`<select onchange=${(e) => setS({ colorRamp: e.target.value })}>
       ${RAMPS.map((r) => h`<option value=${r} ${(st.colorRamp || 'viridis') === r ? 'selected' : null}>${r}</option>`)}</select>`;
     const rev = chip('reverse', () => item.style().rampReverse, () => setS({ rampReverse: !item.currentStyle().rampReverse }));
     return h`<div class="psec"><div class="istit">color by</div>
-      ${field('mode', styleSeg(item, 'colorMode', 'single', [['single', 'single'], ['categorical', 'class'], ['ramp', 'ramp']]))}
-      ${field('column', colSel)}
+      ${field('mode', styleSeg(item, 'colorMode', 'single', [['single', 'single'], ['categorical', 'class'], ['ramp', 'ramp'], ['rgb', 'rgb']]))}
+      ${field('column', colCtl)}
       ${field('ramp', rampSel)}
       ${field('reverse', chips(rev))}</div>`;
   }

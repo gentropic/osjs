@@ -114,7 +114,8 @@ export class DataItem {
     const st = this.style(), cols = this.columns();
     const single = st.color || '#888888';
     const col = cols[st.colorBy];
-    if (!col || (st.colorMode !== 'ramp' && st.colorMode !== 'categorical')) return () => single;
+    if (!col || st.colorMode === 'single' || !st.colorMode) return () => single;
+    if (st.colorMode === 'rgb') return (i) => (String(col.values[i] || '').trim() || single);   // literal colours from the column
     if (st.colorMode === 'ramp') {
       const nums = col.values.map(Number);
       const finite = nums.filter(Number.isFinite);
@@ -157,7 +158,8 @@ export class DataItem {
     const L = this.layers(), st = this.style(), P = this.params(), d = this.dcos(), out = [];
     const src = (i) => ({ item: this.id, datum: i });
     const colorFn = this._colorFn();
-    const dStyle = (i) => (st.colorMode === 'ramp' || st.colorMode === 'categorical') ? { ...st, color: colorFn(i) } : st;
+    const perDatum = st.colorMode && st.colorMode !== 'single';
+    const dStyle = (i) => (perDatum ? { ...st, color: colorFn(i) } : st);
     this._geometry(out, L, dStyle, src, d);
     // density — method / smoothing / levels are tunable per item
     const dOpts = { method: P.cMethod };
