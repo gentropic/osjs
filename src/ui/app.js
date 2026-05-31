@@ -367,7 +367,8 @@ export function mountApp(root) {
           const numeric = vals.some((v) => v !== '' && Number.isFinite(parseFloat(v)))
             && vals.every((v) => v === '' || Number.isFinite(parseFloat(v)));
           style.colorMode = numeric ? 'ramp' : 'categorical';
-          style.colorBy = map.colorBy;
+          // colorBy indexes colorColumns() = geometry columns + data columns
+          style.colorBy = (Cls.GEOM || []).length + map.colorBy;
           if (numeric) style.colorRamp = 'viridis';
         }
         payload = { measurements: toDipDir(built.measurements), columns: built.columns, style };
@@ -498,13 +499,10 @@ export function mountApp(root) {
       ${field('opacity', opacityCtl)}</div>`;
   }
   function colorBySection(item) {
-    const cols = item.currentColumns();
+    const cols = item.colorColumns();   // geometry columns (dip dir, dip, …) + imported ones
     const st = item.currentStyle();
     const setS = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
-    // always shown — class/ramp/rgb need a data column, so guide the user when there is none
-    const colCtl = cols.length
-      ? colSelect(cols, st.colorBy ?? 0, false, (v) => setS({ colorBy: v }))
-      : h`<span class="muted">none — add one via table → edit → ＋ column, or import a CSV column</span>`;
+    const colCtl = colSelect(cols, st.colorBy ?? 0, false, (v) => setS({ colorBy: v }));
     const rampSel = h`<select onchange=${(e) => setS({ colorRamp: e.target.value })}>
       ${RAMPS.map((r) => h`<option value=${r} ${(st.colorRamp || 'viridis') === r ? 'selected' : null}>${r}</option>`)}</select>`;
     const rev = chip('reverse', () => item.style().rampReverse, () => setS({ rampReverse: !item.currentStyle().rampReverse }));

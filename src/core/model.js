@@ -109,9 +109,18 @@ export class DataItem {
     return out;
   }
 
+  // Colourable columns = the geometry components (dip dir, dip, trend, plunge,
+  // aperture, rake, sense…) followed by any imported data columns. So you can
+  // ramp by dip or colour faults by sense with no extra data at all.
+  colorColumns() {
+    const m = this.measurements();
+    const geom = (this.constructor.GEOM || []).map((name, k) => ({ name, values: m.map((r) => r[k]) }));
+    return [...geom, ...this.columns()];
+  }
+
   // Per-measurement colour function (i) → CSS colour, honouring style.colorMode.
   _colorFn() {
-    const st = this.style(), cols = this.columns();
+    const st = this.style(), cols = this.colorColumns();
     const single = st.color || '#888888';
     const col = cols[st.colorBy];
     if (!col || st.colorMode === 'single' || !st.colorMode) return () => single;
@@ -131,7 +140,7 @@ export class DataItem {
 
   // Legend descriptor for the active colour-by mode (null if single colour).
   colorLegend() {
-    const st = this.style(), cols = this.columns();
+    const st = this.style(), cols = this.colorColumns();
     const col = cols[st.colorBy];
     if (!col) return null;
     if (st.colorMode === 'ramp') {

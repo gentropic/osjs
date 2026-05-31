@@ -119,7 +119,7 @@ test('categorical colour-by: distinct classes get distinct per-datum colours', (
   const ps = new PoleSet({
     measurements: [[210, 65], [220, 60], [200, 70]],
     columns: [{ name: 'set', values: ['A', 'B', 'A'] }],
-    style: { color: '#888', colorMode: 'categorical', colorBy: 0 },
+    style: { color: '#888', colorMode: 'categorical', colorBy: 2 },   // colorColumns = [dip dir, dip, set]
   });
   const pts = ps.contribute('net').filter((p) => p.kind === 'point');
   assert.equal(pts[0].style.color, pts[2].style.color, 'same class → same colour');
@@ -133,7 +133,7 @@ test('rgb colour-by: literal colours read straight from a column', () => {
   const ps = new PoleSet({
     measurements: [[210, 65], [220, 60]],
     columns: [{ name: 'col', values: ['#ff0000', 'rgb(0,128,0)'] }],
-    style: { colorMode: 'rgb', colorBy: 0 },
+    style: { colorMode: 'rgb', colorBy: 2 },           // [dip dir, dip, col]
   });
   const pts = ps.contribute('net').filter((p) => p.kind === 'point');
   assert.deepEqual(pts.map((p) => p.style.color), ['#ff0000', 'rgb(0,128,0)']);
@@ -143,12 +143,20 @@ test('ramp colour-by: numeric column drives colour + legend range', () => {
   const ps = new PoleSet({
     measurements: [[210, 65], [220, 60], [200, 70]],
     columns: [{ name: 'conf', values: ['0', '0.5', '1'] }],
-    style: { colorMode: 'ramp', colorBy: 0, colorRamp: 'viridis' },
+    style: { colorMode: 'ramp', colorBy: 2, colorRamp: 'viridis' },    // [dip dir, dip, conf]
   });
   const pts = ps.contribute('net').filter((p) => p.kind === 'point');
   assert.ok(/^rgb\(/.test(pts[0].style.color) && pts[0].style.color !== pts[2].style.color);
   const legend = ps.colorLegend();
   assert.deepEqual([legend.type, legend.min, legend.max], ['ramp', 0, 1]);
+});
+
+test('colour-by works on the geometry columns too (ramp by dip, no extra data)', () => {
+  const ps = new PoleSet({ measurements: [[210, 20], [220, 50], [200, 80]], style: { colorMode: 'ramp', colorBy: 1, colorRamp: 'viridis' } });
+  assert.equal(ps.colorColumns().map((c) => c.name).join(','), 'dip dir,dip');   // geometry columns are colourable
+  const pts = ps.contribute('net').filter((p) => p.kind === 'point');
+  assert.ok(pts[0].style.color !== pts[2].style.color, 'shallow vs steep dip → different colours');
+  assert.deepEqual([ps.colorLegend().type, ps.colorLegend().min, ps.colorLegend().max], ['ramp', 20, 80]);
 });
 
 test('small circles contribute an axis point + a cone per datum (aperture as angle)', () => {
