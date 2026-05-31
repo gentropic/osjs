@@ -1401,6 +1401,7 @@ export function mountApp(root) {
     const clone = wrap.cloneNode(true);
     clone.querySelectorAll('.anno-handle, .fp-resize, .colgrip, .emptystate').forEach((e) => e.remove());   // non-flow chrome
     clone.querySelectorAll('.fp-actions, .thead-row .btn, .thead-row .mini').forEach((e) => { e.style.visibility = 'hidden'; });   // keep layout → table stays put
+    clone.querySelectorAll('.pageframe').forEach((e) => { e.style.border = 'none'; e.style.boxShadow = 'none'; });   // crop = page; no redundant frame border
     clone.querySelectorAll('.sel').forEach((e) => e.classList.remove('sel'));
     clone.style.cssText = `position:relative;inset:auto;width:${W}px;height:${H}px;display:flex;align-items:center;justify-content:center;`;
     const cnet = clone.querySelector(':scope > svg'); if (cnet) { cnet.style.width = `${net.element.offsetWidth || 540}px`; cnet.style.height = 'auto'; }   // px, not vh (no viewport in the isolated render)
@@ -1420,7 +1421,7 @@ export function mountApp(root) {
   const SVGNS = 'http://www.w3.org/2000/svg';
   const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n2 = (v) => Math.round(v * 100) / 100;
-  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter';   // buttons themselves are skipped by tag (BUTTON/INPUT)
+  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter,.pageframe';   // page frame: the crop IS the page; buttons skipped by tag
   // best-effort font embedding: fetch the Google-Fonts CSS + woff2 and inline them
   // as data-URIs so exported SVGs are self-contained. Cached; falls back silently
   // (offline / CORS) to family-name references (the viewer substitutes).
