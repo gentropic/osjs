@@ -1373,6 +1373,22 @@ export function mountApp(root) {
     fig.addEventListener('pointermove', (e) => { if (!pan) return; net.panBy(e.clientX - pan.x, e.clientY - pan.y); pan = { x: e.clientX, y: e.clientY }; });
     fig.addEventListener('pointerup', () => { if (pan) { pan = null; fig.style.cursor = ''; } });
   }
+  // fit the active figure onto one printed page: scale the plot container to the
+  // printable width and pin it to the page origin (no reflow → overlays stay glued).
+  // Restored afterwards. The @media print rules hide everything else.
+  let printSaved = null;
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeprint', () => {
+      const wrap = wraps[activeTab()] || wraps.net;
+      const r = wrap.getBoundingClientRect(); if (!r.width) return;
+      const target = 718;                                  // ~A4 portrait printable width @96dpi
+      printSaved = { wrap, css: wrap.style.cssText };
+      wrap.style.position = 'fixed'; wrap.style.left = '0'; wrap.style.top = '0';
+      wrap.style.width = `${r.width}px`; wrap.style.height = `${r.height}px`;
+      wrap.style.transformOrigin = '0 0'; wrap.style.transform = `scale(${Math.min(1, target / r.width)})`;
+    });
+    window.addEventListener('afterprint', () => { if (printSaved) { printSaved.wrap.style.cssText = printSaved.css; printSaved = null; } });
+  }
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──
@@ -1408,7 +1424,7 @@ export function mountApp(root) {
   });
   // Excel-style zoom control for the footer: − · slider · + · percentage (click = 100%)
   const zoomSlider = document.createElement('input');
-  zoomSlider.type = 'range'; zoomSlider.min = '0.3'; zoomSlider.max = '8'; zoomSlider.step = '0.02'; zoomSlider.className = 'zoomslider'; zoomSlider.title = 'zoom';
+  zoomSlider.type = 'range'; zoomSlider.min = '0.1'; zoomSlider.max = '8'; zoomSlider.step = '0.02'; zoomSlider.className = 'zoomslider'; zoomSlider.title = 'zoom';
   zoomSlider.oninput = () => net.setZoom(parseFloat(zoomSlider.value));
   effect(() => { zoomSlider.value = String(zoom()); });
   const zoomCtl = h`<span class="zoomctl">

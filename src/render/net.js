@@ -111,7 +111,7 @@ export class NetRenderer {
   }
   zoomAt(mult, clientX, clientY) {
     const r = this._el.getBoundingClientRect();
-    const s = Math.max(0.3, Math.min(8, this._vp.scale * mult)), m = s / this._vp.scale;   // clamp, then real multiplier
+    const s = Math.max(0.1, Math.min(8, this._vp.scale * mult)), m = s / this._vp.scale;   // clamp, then real multiplier
     const fx = clientX - r.left, fy = clientY - r.top;          // cursor px from the net's current top-left
     this._vp.tx += fx * (1 - m); this._vp.ty += fy * (1 - m);   // keep the point under the cursor fixed
     this._vp.scale = s; this._applyViewport();
