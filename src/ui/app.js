@@ -75,6 +75,7 @@ export function mountApp(root) {
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
   const [preview, setPreview] = signal(false);   // presentation mode: hide interactive chrome → camera-ready figure
+  const [zoom, setZoom] = signal(1);              // net viewport scale, mirrored for the footer read-out
   const [mode, setMode] = signal('select');   // net interaction: select | measure | rotate | pick
   const [measure, setMeasure] = signal(null);   // last two-click measurement
   const [cursor, setCursor] = signal(null);
@@ -199,6 +200,7 @@ export function mountApp(root) {
 
   net.onHover = (d) => setCursor(d);
   net.onMeasure = (m) => setMeasure(m);
+  net.onViewport = (vp) => setZoom(vp.scale);
   net.onSelect = (id) => setSelected(id ? (project.items().find((x) => x.id === id) || null) : null);  // click a layer / empty → deselect
   net.onPick = (d) => {
     const it = selected();
@@ -1378,6 +1380,18 @@ export function mountApp(root) {
     if (!measure()) { measureBar.replaceChildren(); return; }
     measureBar.replaceChildren(h`<button class="mini" onclick=${() => constructFrom('plane')}>＋plane</button><button class="mini" onclick=${() => constructFrom('axis')}>＋axis</button><button class="mini" onclick=${() => { net.clearMeasure(); setMeasure(null); }}>clear</button>`);
   });
+  // Excel-style zoom control for the footer: − · slider · + · percentage (click = 100%)
+  const zoomSlider = document.createElement('input');
+  zoomSlider.type = 'range'; zoomSlider.min = '0.3'; zoomSlider.max = '8'; zoomSlider.step = '0.02'; zoomSlider.className = 'zoomslider'; zoomSlider.title = 'zoom';
+  zoomSlider.oninput = () => net.setZoom(parseFloat(zoomSlider.value));
+  effect(() => { zoomSlider.value = String(zoom()); });
+  const zoomCtl = h`<span class="zoomctl">
+    <button class="zb" title="zoom out" onclick=${() => net.setZoom(zoom() / 1.2)}>−</button>
+    ${zoomSlider}
+    <button class="zb" title="zoom in" onclick=${() => net.setZoom(zoom() * 1.2)}>＋</button>
+    <button class="zpct" title="reset to 100%" onclick=${() => net.setZoom(1)}>${() => `${Math.round(zoom() * 100)}%`}</button>
+  </span>`;
+  effect(() => { zoomCtl.style.display = activeTab() === 'net' ? '' : 'none'; });   // zoom only applies to the net
   const countText = () => {
     let n = 0; for (const it of project.items()) n += it.measurements().length;
     return `${project.items().length} sets · ${n} measurements · ${project.projection()}, ${project.hemisphere()} hemisphere`;
@@ -1464,6 +1478,7 @@ export function mountApp(root) {
       ${measureBar}
       <span class="spacer"></span>
       <span class="cnt">${() => countText()}</span>
+      ${zoomCtl}
     </footer>
   </div>`;
 

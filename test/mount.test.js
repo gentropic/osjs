@@ -314,6 +314,17 @@ test('viewport: zoomAt scales (clamped), panBy translates, reset clears', () => 
   assert.deepEqual([net.viewport.tx, net.viewport.ty, net.viewport.scale], [0, 0, 1], 'reset clears the viewport');
 });
 
+test('footer zoom control: reflects the viewport and the % resets to 100%', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  handle.net.zoomAt(2, 50, 50); await tick();
+  const pct = root.querySelector('.zoomctl .zpct');
+  assert.ok(pct, 'zoom control in the footer');
+  assert.match(pct.textContent, /200\s*%/, 'shows the current zoom');
+  pct.click(); await tick();
+  assert.equal(handle.net.viewport.scale, 1, 'clicking the % resets to 100%');
+});
+
 test('preview mode: the toggle adds/removes body.preview', async () => {
   const root = document.createElement('div');
   mountApp(root);

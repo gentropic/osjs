@@ -65,6 +65,7 @@ export class NetRenderer {
     this.onIdentify = null;       // (dcos, itemId|null) — select click: linked identify (flash nearest datum's row)
     this.onContextMenu = null;    // ({clientX, clientY, dcos, id}) — right-click on the net
     this._vp = { tx: 0, ty: 0, scale: 1 };   // viewport: CSS pan/zoom over the net (rect-based, so overlays follow)
+    this.onViewport = null;       // (vp) — fired on any pan/zoom change (for a zoom read-out)
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -101,6 +102,12 @@ export class NetRenderer {
       this._el.style.transform = (v.tx || v.ty || v.scale !== 1) ? `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})` : '';
     }
     this.onAfterRender?.();
+    this.onViewport?.(v);
+  }
+  // set an absolute zoom level, keeping a focal point fixed (defaults to net centre)
+  setZoom(scale, clientX, clientY) {
+    const r = this._el.getBoundingClientRect();
+    this.zoomAt(scale / this._vp.scale, clientX ?? (r.left + r.width / 2), clientY ?? (r.top + r.height / 2));
   }
   zoomAt(mult, clientX, clientY) {
     const r = this._el.getBoundingClientRect();
