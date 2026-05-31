@@ -770,6 +770,7 @@ export function mountApp(root) {
     const addRow = () => { item.setMeasurements([...item.currentMeasurements(), geom.map(() => 0)]); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }))); bumpTable(); };
     const addCol = () => { const n = item.currentColumns().length + 1; item.setColumns([...item.currentColumns(), { name: `col${n}`, values: item.currentMeasurements().map(() => '') }]); bumpTable(); };
     const delRow = (i) => { item.setMeasurements(item.currentMeasurements().filter((_, j) => j !== i)); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: co.values.filter((_, j) => j !== i) }))); bumpTable(); };
+    const delCol = (ci) => { item.setColumns(item.currentColumns().filter((_, j) => j !== ci)); bumpTable(); };
     const cell = (val, onInput) => edit ? h`<input class="tc" value=${val} oninput=${(e) => onInput(e.target.value)}>` : h`<span>${val}</span>`;
 
     // per-column widths (px, by slot index over geom+data cols) live in params so
@@ -787,22 +788,27 @@ export function mountApp(root) {
       const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); overlayDragging = false; item.setParams({ tableColW: work.slice() }); bumpTable(); };
       grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
     };
-    const autosizeCol = (e, slot) => {          // double-click a grip → fit the widest cell
+    const autosizeCol = (e, slot) => {          // double-click a header → fit the widest cell
+      if (e.target.closest('input, button')) return;   // not while renaming / deleting
       const dtable = e.currentTarget.closest('.dtable'); if (!dtable) return;
       dtable.style.gridTemplateColumns = buildGrid(work, slot, 'max-content');   // let the track shrink to content
       const th = dtable.querySelector(`.th[data-col="${slot}"]`);
       work[slot] = th ? Math.max(40, Math.ceil(th.getBoundingClientRect().width) + 2) : 80;
       item.setParams({ tableColW: work.slice() }); bumpTable();
     };
-    const grip = (slot) => h`<span class="colgrip" title="drag to resize · double-click to fit" onpointerdown=${(e) => colResize(e, slot)} ondblclick=${(e) => autosizeCol(e, slot)}></span>`;
+    const grip = (slot) => h`<span class="colgrip" title="drag to resize" onpointerdown=${(e) => colResize(e, slot)}></span>`;
+    // a header cell: double-click anywhere (but the inputs/buttons) to auto-fit
+    const thCell = (slot, inner) => h`<div class="th" data-col=${slot} ondblclick=${(e) => autosizeCol(e, slot)}>${inner}${grip(slot)}</div>`;
 
     // A real <table> can't be built via the template (HTML foster-parenting
     // hoists interpolated <tr>s out of the table); use a CSS-grid of <div>s, and
     // emit every cell in ONE array (adjacent array interpolations would collide).
     const cells = [
       h`<div class="th rownum">#</div>`,
-      ...geom.map((g, k) => h`<div class="th" data-col=${k}><span class="thtext">${g}</span>${grip(k)}</div>`),
-      ...cols.map((c, ci) => h`<div class="th" data-col=${geom.length + ci}>${edit ? h`<input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}>` : h`<span class="thtext">${c.name}</span>`}${grip(geom.length + ci)}</div>`),
+      ...geom.map((g, k) => thCell(k, h`<span class="thtext">${g}</span>`)),
+      ...cols.map((c, ci) => thCell(geom.length + ci, edit
+        ? h`<span class="te-grp"><input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}><button class="thdel" title="delete column" onclick=${() => delCol(ci)}>×</button></span>`
+        : h`<span class="thtext">${c.name}</span>`)),
       ...(edit ? [h`<div class="th tdel"></div>`] : []),
     ];
     meas.forEach((m, i) => {
@@ -814,10 +820,13 @@ export function mountApp(root) {
     // hover a row → brush its datum on the net (delegated; leaves clear the ring)
     const rowHover = (e) => { const r = e.target.closest('[data-row]'); if (r) highlightPoint(item, +r.dataset.row); else clearHighlight(); };
     return h`<div class="tablebox">
-      <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
-        ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
-        ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
-        <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button></div>
+      <div class="thead-row">
+        <span class="tcount">${meas.length} rows · ${cols.length} columns</span>
+        <span class="thead-actions">
+          ${edit ? h`<span class="te-grp"><button class="mini" onclick=${addRow}>＋ row</button><button class="mini" onclick=${addCol}>＋ col</button></span>` : ''}
+          ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
+          <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button>
+        </span></div>
       <div class="tscroll"><div class="dtable" data-item=${item.id} onpointermove=${rowHover} onpointerleave=${clearHighlight} style=${{ gridTemplateColumns: buildGrid(work) }}>${cells}</div></div>
     </div>`;
   }

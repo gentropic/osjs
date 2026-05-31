@@ -246,6 +246,20 @@ test('linked identify: clicking near a datum flashes its table row', async () =>
   // (no assertion on absence beyond not throwing; nearestDatum returns -1)
 });
 
+test('table columns: add then delete a data column (× in edit mode)', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const item = handle.project.items().find((x) => x.type === 'planes' || x.type === 'poles');
+  handle.net.onSelect(item.id); await tick();
+  [...root.querySelectorAll('.tabs .tab')].find((t) => /table/i.test(t.textContent)).click(); await tick();
+  [...root.querySelectorAll('.thead-row .btn')].find((b) => /edit/i.test(b.textContent)).click(); await tick();
+  const c0 = item.currentColumns().length;
+  [...root.querySelectorAll('.thead-actions .mini')].find((b) => /col/i.test(b.textContent)).click(); await tick();
+  assert.equal(item.currentColumns().length, c0 + 1, '+ col appends a data column');
+  root.querySelector('.dtable .thdel').click(); await tick();
+  assert.equal(item.currentColumns().length, c0, 'the × deletes that column');
+});
+
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
   const t = trend * Math.PI / 180, p = plunge * Math.PI / 180;
   return [Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t), -Math.sin(p)];
@@ -365,7 +379,7 @@ test('table tab: shows the selected item and edits write through to the model', 
   const editBtn = [...root.querySelectorAll('.thead-row .btn')].find((b) => /edit/i.test(b.textContent));
   editBtn.click(); await tick();
   const n0 = item.measurements().length;
-  [...root.querySelectorAll('.ttoolbar .mini')].find((b) => /row/i.test(b.textContent)).click();
+  [...root.querySelectorAll('.thead-actions .mini')].find((b) => /row/i.test(b.textContent)).click();
   await tick();
   assert.equal(item.measurements().length, n0 + 1, 'add row appends a measurement');
 
@@ -375,7 +389,7 @@ test('table tab: shows the selected item and edits write through to the model', 
   assert.equal(item.currentMeasurements()[0][0], 999, 'cell edit writes through to measurements');
 
   // add a column
-  [...root.querySelectorAll('.ttoolbar .mini')].find((b) => /column/i.test(b.textContent)).click();
+  [...root.querySelectorAll('.thead-actions .mini')].find((b) => /col/i.test(b.textContent)).click();
   await tick();
   assert.equal(item.currentColumns().length, 1, 'add column adds an aligned column');
   assert.equal(item.currentColumns()[0].values.length, item.measurements().length, 'new column aligned to rows');
