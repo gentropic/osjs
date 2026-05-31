@@ -12,7 +12,7 @@
 
 import * as bearing from '../../vendor/bearing.mjs';
 
-const { Stereonet, conversions, mat3, color, vec3 } = bearing;
+const { Stereonet, conversions, mat3, color, vec3, curves } = bearing;
 const DEG = 180 / Math.PI;
 
 // Colour rides on the SVG attribute (so it can vary per measurement for
@@ -77,13 +77,18 @@ export class NetRenderer {
   _drawMeasure() {
     const m = this._measure; if (!m) return;
     const C = '#0e7d75';
-    const mark = (d) => { const [t, pl] = conversions.dcosToLine(d); this.sn.line(t, pl, { fill: C, stroke: '#fff', r: 4, class: 'osjs-measure' }); };
+    const mark = (d, r) => { const [t, pl] = conversions.dcosToLine(d); this.sn.line(t, pl, { fill: C, stroke: '#fff', r: r || 4, class: 'osjs-measure' }); };
     mark(m.a);
     if (m.b) {
       const pole = vec3.normalize(vec3.cross(m.a, m.b));
-      if (Number.isFinite(pole[0]) && vec3.length(pole) > 1e-6) {
+      if (Number.isFinite(pole[0]) && vec3.length(vec3.cross(m.a, m.b)) > 1e-6) {
         const [dd, dip] = conversions.dcosToPlane(pole);
-        this.sn.plane(dd, dip, { stroke: C, 'stroke-width': 1.5, 'stroke-dasharray': '5 3', class: 'osjs-measure' });
+        this.sn.plane(dd, dip, { stroke: C, 'stroke-width': 1, 'stroke-dasharray': '2 3', class: 'osjs-measure' });   // full great circle
+        // spherical triangle A–B–pole: the measured arc + the two arcs to the pole
+        this.sn.curve(curves.arc(m.a, m.b), { stroke: C, strokeWidth: 2, class: 'osjs-measure' });
+        this.sn.curve(curves.arc(m.a, pole), { stroke: C, strokeWidth: 1, strokeDasharray: '4 3', class: 'osjs-measure' });
+        this.sn.curve(curves.arc(m.b, pole), { stroke: C, strokeWidth: 1, strokeDasharray: '4 3', class: 'osjs-measure' });
+        mark(pole, 3);   // the pole to the common plane
       }
       mark(m.b);
     }

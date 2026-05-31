@@ -1620,6 +1620,18 @@ var Stereonet = class _Stereonet {
     return this;
   }
   /**
+   * Plot an arbitrary 3-D curve/polyline (array of unit direction cosines),
+   * projected and clipped to the net. Use for arcs (see curves.arc), great-circle
+   * segments, slip paths, etc. Style: stroke, strokeWidth, strokeDasharray, fill.
+   * @param {Array<number[]>} points - direction cosines [[x,y,z], …]
+   * @param {Object} [style]
+   * @returns {this}
+   */
+  curve(points, style = {}) {
+    this._items.push({ type: "curve", points, style, _el: null });
+    return this;
+  }
+  /**
    * Plot an elliptical "small circle" centred on a direction, with angular
    * semi-axes in degrees. The major axis points toward `majorDir`.
    * @param {number[]} centerDir - centre direction cosine [x,y,z]
@@ -2027,6 +2039,21 @@ var Stereonet = class _Stereonet {
         }
         break;
       }
+      case "curve": {
+        const st = item.style || {};
+        for (const seg of this._projectCurve(item.points)) {
+          if (seg.length > 1) {
+            svg.polyline(seg, {
+              stroke: st.stroke || "#000",
+              "stroke-width": st.strokeWidth != null ? st.strokeWidth : 1,
+              fill: "none",
+              "stroke-dasharray": st.strokeDasharray,
+              class: this._classFor("curve", st.class)
+            });
+          }
+        }
+        break;
+      }
       case "text": {
         const dcos = lineToDcos(item.trend, item.plunge);
         const d = this._rotate(dcos);
@@ -2277,6 +2304,23 @@ var Stereonet = class _Stereonet {
           "stroke-width": s.strokeWidth,
           fill: s.fill,
           "stroke-dasharray": s.strokeDasharray
+        });
+        break;
+      }
+      case "curve": {
+        const d = segmentsToPathD(this._projectCurve(item.points));
+        const st = item.style || {};
+        if (!item._el) {
+          item._el = document.createElementNS(SVG_NS, "path");
+          setAttrs(item._el, { class: this._classFor("curve", st.class) });
+          this._dataGroup.appendChild(item._el);
+        }
+        setAttrs(item._el, {
+          d,
+          stroke: st.stroke || "#000",
+          "stroke-width": st.strokeWidth != null ? st.strokeWidth : 1,
+          fill: "none",
+          "stroke-dasharray": st.strokeDasharray
         });
         break;
       }
