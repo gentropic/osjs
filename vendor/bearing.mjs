@@ -1374,6 +1374,7 @@ var Stereonet = class _Stereonet {
     this.padding = options.padding ?? defaults.padding;
     this.projection = options.projection || "equal-area";
     this.net = options.net || "equatorial";
+    this.gridSpacing = options.gridSpacing || 10;
     this.rotation = options.rotation ?? (options.center ? _Stereonet.rotationFromCenter(options.center[0], options.center[1]) : options.northPole ? _Stereonet.rotationFromNorthPole(options.northPole[0], options.northPole[1], options.northPole[2] || 0) : null);
     this._instanceStyle = options.style || null;
     this._classPrefix = options.classPrefix !== void 0 ? options.classPrefix : "bearing";
@@ -1858,7 +1859,7 @@ var Stereonet = class _Stereonet {
       this._renderHeatmapString(svg);
     }
     const gridStyle = this._resolveCategory("grid");
-    const { greatCircles, smallCircles } = generateNet(10, this.net);
+    const { greatCircles, smallCircles } = generateNet(this.gridSpacing, this.net);
     for (const gc of greatCircles) {
       for (const seg of this._projectCurve(gc)) {
         if (seg.length > 1) {
@@ -2185,7 +2186,7 @@ var Stereonet = class _Stereonet {
     setAttrs(this._gcPath, { stroke: gridStyle.stroke, "stroke-width": gridStyle.strokeWidth });
     setAttrs(this._scPath, { stroke: gridStyle.stroke, "stroke-width": gridStyle.strokeWidth });
     setAttrs(this._primEl, { stroke: primStyle.stroke, "stroke-width": primStyle.strokeWidth });
-    const { greatCircles, smallCircles } = generateNet(10, this.net);
+    const { greatCircles, smallCircles } = generateNet(this.gridSpacing, this.net);
     this._gcPath.setAttribute("d", this._curvesToPathD(greatCircles));
     this._scPath.setAttribute("d", this._curvesToPathD(smallCircles));
     this._renderHeatmapDOM();

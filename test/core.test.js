@@ -254,7 +254,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
     columns: [{ name: 'set', values: ['A', 'B'] }], style: { colorMode: 'categorical', colorBy: 0 },
   }));
   a.setProjection('equal-angle'); a.setRoseBinWidth(15);
-  a.setRoseScale('count'); a.setRosePetalStyle('kite'); a.setRoseMean(true);
+  a.setRoseScale('count'); a.setRosePetalStyle('kite'); a.setRoseMean(true); a.setGridSpacing(20);
 
   const json = JSON.parse(JSON.stringify(serializeProject(a)));   // prove it is JSON-able
   const b = new Project();
@@ -262,7 +262,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
 
   assert.equal(b.projection(), 'equal-angle');
   assert.equal(b.roseBinWidth(), 15);
-  assert.deepEqual([b.roseScale(), b.rosePetalStyle(), b.roseMean()], ['count', 'kite', true]);
+  assert.deepEqual([b.roseScale(), b.rosePetalStyle(), b.roseMean(), b.gridSpacing()], ['count', 'kite', true, 20]);
   assert.equal(b.items().length, 2);
   const [bed, jts] = b.items();
   assert.equal(bed.type, 'planes');

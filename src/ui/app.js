@@ -520,7 +520,14 @@ export function mountApp(root) {
 
   // ── settings (global, plot-level) ──
   const projSegBtn = (get, set, v, label) => h`<button class=${() => (get() === v ? 'seg on' : 'seg')} onclick=${() => set(v)}>${label}</button>`;
+  const view = { t: 0, p: 90 };   // numeric net view (trend/plunge to centre)
+  const viewCtl = h`<span class="fv">${num(view.t, 0, 360, 1, (e) => { view.t = +e.target.value; })}${num(view.p, 0, 90, 1, (e) => { view.p = +e.target.value; })}<button class="mini" onclick=${() => net.setView(view.t, view.p)}>view</button><button class="mini" onclick=${() => net.resetView()}>reset</button></span>`;
   const settings = h`<div class="settings">
+    <div class="istit">net</div>
+    <label>grid <select onchange=${(e) => project.setGridSpacing(+e.target.value)}>
+      ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === project.gridSpacing() ? 'selected' : null}>${w}°</option>`)}
+    </select></label>
+    <label>view (t/p) ${viewCtl}</label>
     <div class="istit">rose diagram</div>
     <label>bin width <select onchange=${(e) => project.setRoseBinWidth(+e.target.value)}>
       ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === project.roseBinWidth() ? 'selected' : null}>${w}°</option>`)}

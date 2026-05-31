@@ -51,8 +51,11 @@ export class NetRenderer {
   get element() { return this._el; }
 
   _rebuild(projection) {
+    const prevRot = this.sn ? this.sn.rotation : null;     // keep the view across rebuilds
     this._proj = projection;
-    const next = new Stereonet({ size: this._size, projection, classPrefix: 'osjs' });
+    this._grid = this.project.gridSpacing();
+    const next = new Stereonet({ size: this._size, projection, classPrefix: 'osjs', gridSpacing: this._grid });
+    if (prevRot) next.setRotation(prevRot);
     const el = next.element();
     if (this._el && this._el.parentNode) this._el.replaceWith(el);
     this.sn = next;
@@ -60,9 +63,13 @@ export class NetRenderer {
     this._wirePointer();
   }
 
+  // numeric view: bring a trend/plunge to the centre, or reset to default
+  setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); }
+  resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); }
+
   render() {
     const proj = this.project.projection();
-    if (proj !== this._proj) this._rebuild(proj);
+    if (proj !== this._proj || this.project.gridSpacing() !== this._grid) this._rebuild(proj);
     const sn = this.sn;
     sn.clear();
     sn.clearContours();

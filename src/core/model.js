@@ -357,6 +357,7 @@ export class Project {
     mk('roseScale', 'area');        // 'count' (radius ∝ count) | 'area' (∝ √count, equal-area)
     mk('rosePetalStyle', 'petals'); // 'petals' | 'kite' | 'lines'
     mk('roseMean', false);          // draw each set's circular mean direction
+    mk('gridSpacing', 10);          // net great/small-circle grid spacing (degrees)
     mk('contourMethod', 'fisher');
   }
 
@@ -456,6 +457,7 @@ export function serializeProject(project) {
     roseScale: project.roseScale(),
     rosePetalStyle: project.rosePetalStyle(),
     roseMean: project.roseMean(),
+    gridSpacing: project.gridSpacing(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -477,6 +479,7 @@ export function loadProject(project, data) {
   if (data.roseScale) project.setRoseScale(data.roseScale);
   if (data.rosePetalStyle) project.setRosePetalStyle(data.rosePetalStyle);
   if (data.roseMean != null) project.setRoseMean(data.roseMean);
+  if (data.gridSpacing) project.setGridSpacing(data.gridSpacing);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;
