@@ -66,6 +66,7 @@ export class NetRenderer {
     this.onContextMenu = null;    // ({clientX, clientY, dcos, id}) — right-click on the net
     this._vp = { tx: 0, ty: 0, scale: 1 };   // viewport: CSS pan/zoom over the net (rect-based, so overlays follow)
     this.onViewport = null;       // (vp) — fired on any pan/zoom change (for a zoom read-out)
+    this.onRotate = null;         // (mat3|null) — fired when the net orientation changes (for persistence)
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -88,8 +89,10 @@ export class NetRenderer {
   }
 
   // numeric view: bring a trend/plunge to the centre, or reset to default
-  setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
-  resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
+  setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); this.onRotate?.(this.sn.rotation); }
+  resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); this.onRotate?.(this.sn.rotation); }
+  // restore a saved orientation without echoing through onRotate
+  applyRotation(m) { this.sn.setRotation(m || null); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
 
   // ── viewport (pan/zoom over the net, via a CSS transform on the SVG) ──
   // Overlay positioning is rect-based, so transforming the SVG and re-running the
@@ -234,6 +237,7 @@ export class NetRenderer {
           sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
           sn.updateContours(); sn.render();
           this.onAfterRender?.();
+          this.onRotate?.(sn.rotation);
           cur = p;
         } else if (this.mode === 'measure' && moved && this._measure) {  // drag → measure A→B
           const b = sn.unproject(p.x, p.y);

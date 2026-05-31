@@ -209,6 +209,9 @@ export function mountApp(root) {
   // restore a saved viewport onto the net (load / undo); silent setViewport so it
   // doesn't echo back through onViewport
   effect(() => { const vp = project.viewport(); if (vp) { net.setViewport(vp); setZoom(vp.scale); } });
+  let rotTimer = null;
+  net.onRotate = (m) => { clearTimeout(rotTimer); const v = m ? Array.from(m) : null; rotTimer = setTimeout(() => project.setRotation(v), 250); };
+  effect(() => { const m = project.rotation(); if (m) net.applyRotation(m); });   // restore orientation (load / undo)
   net.onSelect = (id) => setSelected(id ? (project.items().find((x) => x.id === id) || null) : null);  // click a layer / empty → deselect
   net.onPick = (d) => {
     const it = selected();
@@ -1434,13 +1437,18 @@ export function mountApp(root) {
   // print the composed figure via a hidden iframe (the figure is the only thing in
   // that document → a clean page), rather than window.print() of the whole app.
   function printFigure() {
-    const { svg } = composeFigureSVG();
+    const { svg, w, h } = composeFigureSVG();
+    // fit ONE A4 page (10mm margins → 190×277mm printable), preserving aspect, so
+    // the figure never spills onto a second sheet
+    let dw = 190, dh = 190 * h / w;
+    if (dh > 277) { dh = 277; dw = 277 * w / h; }
+    const land = w > h;                                    // wider figures → landscape page
     const ifr = document.createElement('iframe');
     ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
     document.body.appendChild(ifr);
     const doc = ifr.contentDocument || ifr.contentWindow.document;
     doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:10mm}html,body{margin:0;padding:0}svg{width:100%;height:auto;display:block}</style></head><body>${svg}</body></html>`);
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4 ${land ? 'landscape' : 'portrait'};margin:10mm}html,body{margin:0;padding:0}svg{width:${Math.min(dw, land ? 277 : 190)}mm;height:auto;max-height:${land ? 190 : 277}mm;display:block;margin:0 auto}</style></head><body>${svg}</body></html>`);
     doc.close();
     const win = ifr.contentWindow;
     win.addEventListener('afterprint', () => setTimeout(() => ifr.remove(), 300));
