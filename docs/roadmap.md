@@ -81,12 +81,17 @@ bearing's net only; print is the only path that captures the full composition.
 **Figure / page space** (NEXT — ties preview, the viewport, and a page model
 together): treat the composition as a **figure on a page**, not just an overlay on
 a fixed net. Pieces:
-- **Page-space navigation** — pan & zoom the figure as a canvas (see "Plot viewport"
-  below; the viewport transform is the substrate). Scroll/zoom a page larger than
-  the net, lay elements in the margins, fit-to-page.
-- **Figure configuration** — page size / aspect / orientation, margins, background
-  (paper white vs transparent vs themed), a visible page frame to compose within,
-  and DPI/scale for export. Persisted in the project.
+- **Page-space navigation** ✓ (built — pan & zoom). Scroll = zoom-to-cursor,
+  middle-drag = pan, ⤢ = fit/reset. Done host-side as a CSS transform on the net
+  SVG: because the overlay math is rect-based, the transform composes for free
+  (overlays follow via onAfterRender; measure/pick/drag still invert) — **no bearing/
+  viewBox change needed**, contrary to the earlier assumption. `net._vp{tx,ty,scale}`,
+  `zoomAt`/`panBy`/`resetViewport`. Not yet persisted (it's a view, like rotation).
+  TODO refinements: keyboard/space-pan, touch pinch, fit-to-content, persist per tab.
+- **Figure configuration** (NEXT) — page size / aspect / orientation, margins,
+  background (paper white vs transparent vs themed), a visible page frame to compose
+  within, and DPI/scale for export. Persisted in the project. With pan/zoom now in,
+  a real page frame to navigate is the natural next slice.
 - Multiple figures / pages eventually (a project holds several composed views) —
   the QGIS-layout-manager analogue. Defer until single-page is solid.
 This is where preview/print graduates from "hide chrome" to "a real page you arrange
