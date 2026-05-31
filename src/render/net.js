@@ -189,7 +189,7 @@ export class NetRenderer {
       const p = toSvg(e);
       if (cur) {
         if (Math.hypot(p.x - cur.x, p.y - cur.y) > 1) moved = true;
-        if (this.mode === 'rotate') {              // drag → arcball spin
+        if (this.mode === 'rotate' || this._rotKey) {   // drag (or Alt-drag in any mode) → arcball spin
           const arc = sn.arcball(cur.x, cur.y, p.x, p.y);
           sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
           sn.updateContours(); sn.render();
@@ -200,21 +200,24 @@ export class NetRenderer {
           if (b) { this._measure.b = b; this.render(); if (this.onMeasure) this.onMeasure(this.measure()); }
         }
       } else {
-        if (this.mode === 'select') el.style.cursor = dsId(e.target, el) ? 'pointer' : 'default';
+        if (e.altKey) el.style.cursor = 'grab';                  // Alt anywhere → rotate affordance
+        else if (this.mode === 'select') el.style.cursor = dsId(e.target, el) ? 'pointer' : 'default';
         if (this.onHover) this.onHover(sn.unproject(p.x, p.y));   // hover → read-out
       }
     });
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      cur = toSvg(e); moved = false; this._downEl = e.target; el.setPointerCapture?.(e.pointerId); e.preventDefault();
-      if (this.mode === 'rotate') el.style.cursor = 'grabbing';
-      if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
+      cur = toSvg(e); moved = false; this._downEl = e.target; this._rotKey = e.altKey;  // Alt held → temporary rotate
+      el.setPointerCapture?.(e.pointerId); e.preventDefault();
+      if (this.mode === 'rotate' || this._rotKey) el.style.cursor = 'grabbing';
+      else if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
     el.addEventListener('pointerup', () => {
       const d = (cur && !moved) ? sn.unproject(cur.x, cur.y) : null;
-      const wasClick = !moved;
-      cur = null;
-      if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
+      const wasClick = !moved, rotKey = this._rotKey;
+      cur = null; this._rotKey = false;
+      if (rotKey) { /* temporary rotate — no tool action */ }
+      else if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
       else if (this.mode === 'measure' && wasClick) { this._measure = null; this.render(); }  // click (no drag) cancels
       else if (this.mode === 'select' && wasClick && this.onSelect) this.onSelect(dsId(this._downEl, el));  // null = empty → deselect
       this._syncCursor();

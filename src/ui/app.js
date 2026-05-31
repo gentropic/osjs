@@ -909,7 +909,7 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
   const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
