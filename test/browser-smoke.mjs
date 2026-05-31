@@ -174,14 +174,18 @@ await check('band dip mode: the great circle passes through the clicked dip vect
   await page.mouse.move(cx + b.w * 0.06, cy + b.w * 0.04);  // small drag → narrow band
   await page.mouse.move(cx + b.w * 0.07, cy + b.w * 0.04);
   await page.waitForTimeout(40);
-  const minDist = await page.evaluate(([clx, cly, left, top]) => {
+  const m = await page.evaluate(([clx, cly, left, top]) => {
     const rel = [clx - left, cly - top];
-    let best = 1e9;
-    for (const p of document.querySelectorAll('.sellayer .cone')) for (const s of p.getAttribute('points').trim().split(/\s+/)) { const [x, y] = s.split(',').map(Number); best = Math.min(best, Math.hypot(x - rel[0], y - rel[1])); }
-    return best;
+    const pts = (sel) => [...document.querySelectorAll(sel)].flatMap((p) => p.getAttribute('points').trim().split(/\s+/).map((s) => s.split(',').map(Number)));
+    const gc = pts('.sellayer .cone'), edges = pts('.sellayer .band-edge');
+    let through = 1e9; for (const [x, y] of gc) through = Math.min(through, Math.hypot(x - rel[0], y - rel[1]));
+    // narrowness: each band-edge point's distance to the nearest great-circle point (small ⇒ inverted width starts tight)
+    let widest = 0; for (const [ex, ey] of edges) { let d = 1e9; for (const [gx, gy] of gc) d = Math.min(d, Math.hypot(ex - gx, ey - gy)); widest = Math.max(widest, d); }
+    return { through, widest };
   }, [cx, cy, b.x, b.y]);
   await page.mouse.up();
-  assert(minDist < 14, `dip-mode great circle does not pass through the clicked dip vector (min dist ${minDist.toFixed(1)}px)`);
+  assert(m.through < 14, `dip-mode great circle does not pass through the clicked dip vector (min dist ${m.through.toFixed(1)}px)`);
+  assert(m.widest < 90, `dip-mode band is not narrow for a small drag (edge ${m.widest.toFixed(0)}px from the plane) — width not inverted`);
   await page.evaluate(() => window.osjs.commitSelection(() => false));
   await page.locator('header button[title="click the pole of the plane"]').click();   // restore pole mode
 });

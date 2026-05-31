@@ -142,7 +142,7 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     if (m === 'lasso') drag = { tool: 'lasso', pts: [p], cmb };
     else if (m === 'rect') drag = { tool: 'rect', start: p, cmb };
     else if (m === 'cone') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'cone', axis: conversions.lineToDcos(c[0], c[1]), r: 0, cmb } : null; }
-    else if (m === 'band') { const c = net.locate('attitude', p[0], p[1]); if (c) { let ax = conversions.lineToDcos(c[0], c[1]); if (bandRef() === 'dip') ax = poleFromDip(ax); drag = { tool: 'band', axis: ax, w: 0, cmb }; } else drag = null; }
+    else if (m === 'band') { const c = net.locate('attitude', p[0], p[1]); if (c) { let ax = conversions.lineToDcos(c[0], c[1]); const inv = bandRef() === 'dip'; if (inv) ax = poleFromDip(ax); drag = { tool: 'band', axis: ax, w: 0, inv, cmb }; } else drag = null; }
   });
   selLayer.addEventListener('dblclick', (e) => { if (mode() === 'poly' && polyVerts && polyVerts.length >= 3) { e.preventDefault(); closePoly(); } });
   selLayer.addEventListener('pointermove', (e) => {
@@ -150,7 +150,7 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     if (drag.tool === 'lasso') { drag.pts.push([x, y]); regionPreview = `<polygon class="lasso" points="${drag.pts.map((p) => p.join(',')).join(' ')}"/>`; }
     else if (drag.tool === 'rect') { const [sx, sy] = drag.start; drag.rect = [Math.min(sx, x), Math.min(sy, y), Math.abs(x - sx), Math.abs(y - sy)]; regionPreview = `<rect class="lasso" x="${drag.rect[0]}" y="${drag.rect[1]}" width="${drag.rect[2]}" height="${drag.rect[3]}"/>`; }
     else if (drag.tool === 'cone') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.r = Math.acos(clamp1(Math.abs(vec3.dot(drag.axis, d)))); regionPreview = coneSegments(drag.axis, drag.r).map((run) => `<polyline class="cone" points="${run.join(' ')}"/>`).join(''); } }
-    else if (drag.tool === 'band') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.w = Math.acos(clamp1(Math.abs(vec3.dot(drag.axis, d)))); regionPreview = bandSegments(drag.axis, drag.w); } }
+    else if (drag.tool === 'band') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]), th = Math.acos(clamp1(Math.abs(vec3.dot(drag.axis, d)))); drag.w = drag.inv ? Math.PI / 2 - th : th; regionPreview = bandSegments(drag.axis, drag.w); } }
     renderSelection();
   });
   selLayer.addEventListener('pointerup', (e) => {
