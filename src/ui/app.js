@@ -1331,6 +1331,20 @@ export function mountApp(root) {
   // observe the stable plotwrap (net.element is swapped on projection rebuilds) so a
   // window/gutter resize repositions overlay elements even without an intervening render
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(repositionOverlay).observe(wraps.net);
+  // viewport gestures live on the whole net plot area (not just the SVG): scroll
+  // anywhere to zoom-to-cursor, middle-drag to pan. zoomAt/panBy use the net's rect
+  // internally, so a cursor out in the margin still works.
+  {
+    const fig = wraps.net; let pan = null;
+    fig.addEventListener('wheel', (e) => {
+      const body = e.target.closest('.fp-body');
+      if (body && body.scrollHeight > body.clientHeight) return;   // let a scrollable floating table scroll
+      e.preventDefault(); net.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+    }, { passive: false });
+    fig.addEventListener('pointerdown', (e) => { if (e.button !== 1) return; e.preventDefault(); pan = { x: e.clientX, y: e.clientY }; fig.setPointerCapture?.(e.pointerId); fig.style.cursor = 'grabbing'; });
+    fig.addEventListener('pointermove', (e) => { if (!pan) return; net.panBy(e.clientX - pan.x, e.clientY - pan.y); pan = { x: e.clientX, y: e.clientY }; });
+    fig.addEventListener('pointerup', () => { if (pan) { pan = null; fig.style.cursor = ''; } });
+  }
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──

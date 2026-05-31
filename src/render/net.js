@@ -206,15 +206,13 @@ export class NetRenderer {
   _wirePointer() {
     const el = this._el, sn = this.sn;
     el.style.touchAction = 'none';
-    let cur = null, moved = false, pan = null;
+    let cur = null, moved = false;
     const toSvg = (e) => {
       const r = el.getBoundingClientRect();
       const k = sn.size / r.width;
       return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
-    el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
     el.addEventListener('pointermove', (e) => {
-      if (pan) { this.panBy(e.clientX - pan.x, e.clientY - pan.y); pan = { x: e.clientX, y: e.clientY }; return; }
       const p = toSvg(e);
       if (cur) {
         if (Math.hypot(p.x - cur.x, p.y - cur.y) > 1) moved = true;
@@ -235,7 +233,6 @@ export class NetRenderer {
       }
     });
     el.addEventListener('pointerdown', (e) => {
-      if (e.button === 1) { e.preventDefault(); pan = { x: e.clientX, y: e.clientY }; el.setPointerCapture?.(e.pointerId); el.style.cursor = 'grabbing'; return; }   // middle-drag → pan
       if (e.button !== 0) return;
       cur = toSvg(e); moved = false; this._downEl = e.target; this._rotKey = e.altKey;  // Alt held → temporary rotate
       el.setPointerCapture?.(e.pointerId); e.preventDefault();
@@ -243,7 +240,6 @@ export class NetRenderer {
       else if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
     el.addEventListener('pointerup', () => {
-      if (pan) { pan = null; this._syncCursor(); return; }
       const d = (cur && !moved) ? sn.unproject(cur.x, cur.y) : null;
       const wasClick = !moved, rotKey = this._rotKey;
       cur = null; this._rotKey = false;
