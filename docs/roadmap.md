@@ -88,10 +88,20 @@ a fixed net. Pieces:
   viewBox change needed**, contrary to the earlier assumption. `net._vp{tx,ty,scale}`,
   `zoomAt`/`panBy`/`resetViewport`. Not yet persisted (it's a view, like rotation).
   TODO refinements: keyboard/space-pan, touch pinch, fit-to-content, persist per tab.
-- **Figure configuration** (NEXT) — page size / aspect / orientation, margins,
-  background (paper white vs transparent vs themed), a visible page frame to compose
-  within, and DPI/scale for export. Persisted in the project. With pan/zoom now in,
-  a real page frame to navigate is the natural next slice.
+- **Figure configuration** ✓ (first slice) — a toggleable **page frame** (aspect:
+  square/4:3/3:4/16:9/A4 ↔ portrait) behind the net that pans/zooms with it,
+  **background** (paper/transparent/theme), and **export DPI** (PNG renders at
+  dpi/96). Persisted. Preview restyles the figure (rails stay); print reveals only
+  the plot subtree with no reflow.
+  TODO to finish the page model:
+  - **Print/export clipped to the page bounds** at the chosen size + DPI — today
+    print shows the figure where it sits on screen (coherent, but not page-fitted)
+    and PNG/SVG are net-only. Need to map the page-frame rect → paper, and bake the
+    overlay (annotations/tables/legend) into the raster/vector.
+  - **Explicit page size** (mm/in, named presets A4/Letter/…) not just aspect, so
+    DPI×size gives real output pixel dimensions.
+  - **Composed SVG/PNG export** (the overlay-baking piece) — the one genuinely hard
+    part; print is the interim full-composition path.
 - Multiple figures / pages eventually (a project holds several composed views) —
   the QGIS-layout-manager analogue. Defer until single-page is solid.
 This is where preview/print graduates from "hide chrome" to "a real page you arrange
