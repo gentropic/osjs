@@ -290,6 +290,16 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   assert.equal(handle.project.items().at(-1).type, 'annotation');
 });
 
+test('vendored sideact h: multi-root + adjacent interpolations keep order (binding-order fix)', async () => {
+  const { h } = await import('../vendor/sideact/dom.js');
+  const a = document.createElement('i'); a.textContent = 'A';
+  const multi = h`<i>B1</i><i>B2</i>`;                 // a multi-root fragment
+  const c = document.createElement('i'); c.textContent = 'C';
+  const root = h`<div>${a}${multi}${c}</div>`;          // followed by another binding
+  assert.equal([...root.querySelectorAll('i')].map((e) => e.textContent).join(','), 'A,B1,B2,C',
+    'fragment expands in place without clobbering the following binding');
+});
+
 test('preview mode: the toggle adds/removes body.preview', async () => {
   const root = document.createElement('div');
   mountApp(root);

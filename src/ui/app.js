@@ -830,7 +830,7 @@ export function mountApp(root) {
       h`<div class="th rownum">#</div>`,
       ...geom.map((g, k) => thCell(k, h`<span class="thtext">${g}</span>`)),
       ...cols.map((c, ci) => thCell(geom.length + ci, edit
-        ? h`<span class="te-grp"><input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}><button class="thdel" title="delete column" onclick=${() => delCol(ci)}>×</button></span>`
+        ? h`<input class="thi" value=${c.name} oninput=${(e) => renameCol(ci, e.target.value)}><button class="thdel" title="delete column" onclick=${() => delCol(ci)}>×</button>`
         : h`<span class="thtext">${c.name}</span>`)),
       ...(edit ? [h`<div class="th tdel"></div>`] : []),
     ];
@@ -846,7 +846,7 @@ export function mountApp(root) {
       <div class="thead-row">
         <span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         <span class="thead-actions">
-          ${edit ? h`<span class="te-grp"><button class="mini" onclick=${addRow}>＋ row</button><button class="mini" onclick=${addCol}>＋ col</button></span>` : ''}
+          ${edit ? h`<button class="mini" onclick=${addRow}>＋ row</button><button class="mini" onclick=${addCol}>＋ col</button>` : ''}
           ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
           <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button>
         </span></div>
