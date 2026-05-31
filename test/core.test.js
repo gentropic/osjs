@@ -309,6 +309,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
   }));
   a.setProjection('equal-angle'); a.setRoseBinWidth(15);
   a.setRoseScale('count'); a.setRosePetalStyle('kite'); a.setRoseMean(true); a.setGridSpacing(20); a.setHemisphere('upper');
+  a.setTitle('Fig 1 — bedding'); a.setTitlePos([0.1, 0.9]); a.setLegendShow(false); a.setLegendPos([0.2, 0.3]);
 
   const json = JSON.parse(JSON.stringify(serializeProject(a)));   // prove it is JSON-able
   const b = new Project();
@@ -317,6 +318,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
   assert.equal(b.projection(), 'equal-angle');
   assert.equal(b.roseBinWidth(), 15);
   assert.deepEqual([b.roseScale(), b.rosePetalStyle(), b.roseMean(), b.gridSpacing(), b.hemisphere()], ['count', 'kite', true, 20, 'upper']);
+  assert.deepEqual([b.title(), b.titlePos(), b.legendShow(), b.legendPos()], ['Fig 1 — bedding', [0.1, 0.9], false, [0.2, 0.3]]);   // decorations persist
   assert.equal(b.items().length, 2);
   const [bed, jts] = b.items();
   assert.equal(bed.type, 'planes');

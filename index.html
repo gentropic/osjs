@@ -203,7 +203,15 @@
     .slink { font: inherit; font-size: 11px; color: var(--cyan-text); background: none; border: 0; padding: 0; cursor: pointer; }
     .slink:hover { text-decoration: underline; }
     /* net legend overlay */
-    .netlegend { position: absolute; left: 14px; bottom: 14px; max-width: 46%; pointer-events: none; }
+    /* composition decorations (draggable legend + title, figure space) */
+    .decorlayer { position: absolute; pointer-events: none; z-index: 2; overflow: visible; }
+    .netlegend { position: absolute; max-width: 60%; pointer-events: auto; cursor: move; }
+    .netlegend.sel { outline: 1px dashed var(--cyan); outline-offset: 2px; }
+    .nettitle { position: absolute; pointer-events: auto; cursor: move; max-width: 80%; padding: 2px 6px; border-radius: 4px;
+                font-weight: 600; font-size: 17px; letter-spacing: .01em; color: var(--ink); }
+    .nettitle:hover { background: color-mix(in srgb, var(--panel) 60%, transparent); }
+    .nettitle-text { outline: none; white-space: pre-wrap; }
+    .nettitle-text[contenteditable="true"] { cursor: text; box-shadow: 0 0 0 1px var(--cyan); border-radius: 3px; padding: 0 2px; }
     .lg { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; font-size: 11px;
           background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
           border-radius: 6px; box-shadow: 0 1px 6px rgba(40,55,75,.10); backdrop-filter: blur(2px); }

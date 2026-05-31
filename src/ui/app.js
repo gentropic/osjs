@@ -716,9 +716,27 @@ export function mountApp(root) {
 
   // ── tabbed plots ──
   const tab = (key, label) => h`<button class=${() => (activeTab() === key ? 'tab on' : 'tab')} onclick=${() => setActiveTab(key)}>${label}</button>`;
-  // live legend overlay on the net: a swatch / class list / ramp bar per visible item
+  // overlay layers — declared up here because the legend/decor effect just below
+  // runs synchronously on creation and positions into them (sideact effect TDZ).
+  const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
+  const panelLayer = document.createElement('div'); panelLayer.className = 'panellayer';
+  const brushLayer = document.createElement('div'); brushLayer.className = 'brushlayer';
+  let overlayDragging = false;                          // suppress rebuilds while an overlay element is dragged
+
+  // composition decorations (draggable legend + title), figure-space, over the net
+  const decorLayer = document.createElement('div'); decorLayer.className = 'decorlayer';
   const legendHost = document.createElement('div');
   legendHost.className = 'netlegend';
+  legendHost.addEventListener('pointerdown', (e) => dragDecor(e, 'legendPos', legendHost));
+  legendHost.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, decorMenu('legend')); });
+  const titleHost = document.createElement('div'); titleHost.className = 'nettitle';
+  const titleText = document.createElement('div'); titleText.className = 'nettitle-text';
+  titleHost.append(titleText);
+  titleHost.addEventListener('pointerdown', (e) => { if (titleText.isContentEditable) return; dragDecor(e, 'titlePos', titleHost); });
+  titleHost.addEventListener('dblclick', () => { titleText.contentEditable = 'true'; titleText.focus(); });
+  titleText.addEventListener('blur', () => { titleText.contentEditable = 'false'; project.setTitle(titleText.textContent.trim()); });
+  titleHost.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, decorMenu('title')); });
+  decorLayer.append(legendHost, titleHost);
   function rampBar(lg) {
     const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color.sampleScale(lg.ramp, lg.reverse ? 1 - t : t));
     return h`<div class="lgramp"><span class="lgname">${lg.column}</span>
@@ -748,8 +766,10 @@ export function mountApp(root) {
   }
   effect(() => {
     const vis = project.visibleLeaves().filter((it) => it.type !== 'annotation');
-    if (vis.length) legendHost.replaceChildren(h`<div class="lg">${vis.map(legendRow)}</div>`);
-    else legendHost.replaceChildren();
+    legendHost.replaceChildren(...(vis.length ? [h`<div class="lg">${vis.map(legendRow)}</div>`] : []));
+    if (titleText.textContent !== project.title()) titleText.textContent = project.title();   // don't clobber a live edit
+    project.legendShow(); project.legendPos(); project.titlePos();   // subscribe → reposition on change
+    repositionDecor();
   });
   // ── data table (selected item) with toggleable edit mode ──
   // edit mode is PER TABLE (tab + each floating panel toggle independently),
@@ -850,14 +870,10 @@ export function mountApp(root) {
   // Draggable elements positioned over the net SVG, repositioned on rotation/resize
   // via net.onAfterRender. Two element kinds today: annotations (labels + leaders,
   // attitude/figure space) and floating data tables (figure space, rotation-fixed).
-  const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
-  const panelLayer = document.createElement('div'); panelLayer.className = 'panellayer';
-  const brushLayer = document.createElement('div'); brushLayer.className = 'brushlayer';
   const brushRing = document.createElement('div'); brushRing.className = 'brushring'; brushRing.style.display = 'none';
   brushLayer.append(brushRing);
   const px = (v) => parseFloat(v) || 0;
-  let overlayDragging = false;                          // suppress rebuilds while an overlay element is being dragged
   const arrowD = (tx, ty, ex, ey) => {                  // triangle at the target, pointing along the leader
     const dx = tx - ex, dy = ty - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
     const bx = tx - ux * 8, by = ty - uy * 8, nx = -uy * 4, ny = ux * 4;
@@ -914,8 +930,29 @@ export function mountApp(root) {
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
     const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box;
     return true;
+  }
+  // drag a decoration (legend/title) in figure space; commits its [u,v] to project
+  function dragDecor(e, posKey, el) {
+    if (e.button !== 0) return; e.preventDefault();
+    el.setPointerCapture?.(e.pointerId); overlayDragging = true;
+    const r0 = net.element.getBoundingClientRect();
+    const offX = e.clientX - r0.left - px(el.style.left), offY = e.clientY - r0.top - px(el.style.top);
+    let coords = null;
+    const move = (ev) => { const r = net.element.getBoundingClientRect(); const x = ev.clientX - r.left - offX, y = ev.clientY - r.top - offY; el.style.left = `${x}px`; el.style.top = `${y}px`; coords = net.locate('figure', x, y); };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); overlayDragging = false; if (coords) project[`set${posKey[0].toUpperCase()}${posKey.slice(1)}`](coords); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+  }
+  // position legend + title from their figure-space anchors; toggle by show/empty
+  function repositionDecor() {
+    if (overlayDragging || !fitOverlay()) return;
+    const showLeg = project.legendShow() && project.visibleLeaves().some((it) => it.type !== 'annotation');
+    legendHost.style.display = showLeg ? '' : 'none';
+    if (showLeg) { const p = net.place('figure', ...project.legendPos()); legendHost.style.left = `${p.x}px`; legendHost.style.top = `${p.y}px`; }
+    const hasTitle = !!project.title();
+    titleHost.style.display = hasTitle ? '' : 'none';
+    if (hasTitle) { const p = net.place('figure', ...project.titlePos()); titleHost.style.left = `${p.x}px`; titleHost.style.top = `${p.y}px`; }
   }
   // ── linked identify / brushing (table ⇄ plot) ──
   // hover a row → ring on the net at that datum; click a datum → flash its row(s).
@@ -1048,6 +1085,18 @@ export function mountApp(root) {
     const w = []; for (let i = 0; i < n; i++) { const th = dt.querySelector(`.th[data-col="${i}"]`); w[i] = th ? Math.max(40, Math.ceil(th.getBoundingClientRect().width) + 2) : 80; }
     item.setParams({ tableColW: w }); bumpTable();
   }
+  function decorMenu(which) {
+    if (which === 'legend') return [
+      { label: 'Hide legend', onClick: () => project.setLegendShow(false) },
+      { label: 'Reset position', onClick: () => project.setLegendPos([-0.98, -0.62]) },
+    ];
+    return [
+      { label: 'Edit title…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Figure title', project.title()) : null; if (t != null) project.setTitle(t.trim()); } },
+      { label: 'Reset position', onClick: () => project.setTitlePos([-0.98, 0.98]) },
+      { separator: true },
+      { label: 'Remove title', danger: true, onClick: () => project.setTitle('') },
+    ];
+  }
   function panelMenu(item) {
     const pr = item.currentParams();
     return [
@@ -1078,6 +1127,8 @@ export function mountApp(root) {
       items.push({ label: 'Add annotation here', onClick: () => addAnnotationAt(t, p) });
       items.push({ separator: true });
     }
+    items.push({ label: 'Legend', checked: project.legendShow(), onClick: () => project.setLegendShow(!project.legendShow()) });
+    items.push({ label: project.title() ? 'Edit title…' : 'Add title…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Figure title', project.title()) : null; if (t != null) project.setTitle(t.trim()); } });
     items.push({ label: 'Reset orientation', onClick: () => net.resetView() });
     openMenu(clientX, clientY, items);
   };
@@ -1233,7 +1284,7 @@ export function mountApp(root) {
       panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`;
     }
   }
-  const repositionOverlay = () => { repositionAnnos(); repositionPanels(); };
+  const repositionOverlay = () => { repositionAnnos(); repositionPanels(); repositionDecor(); };
   net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
   // panels rebuild on open/close/min/move/resize/name/edit-mode + structural table
@@ -1243,7 +1294,7 @@ export function mountApp(root) {
   effect(() => { const s = selected(); for (const el of panelLayer.querySelectorAll('.floatpanel')) el.classList.toggle('sel', !!s && el.dataset.panel === s.id); });
 
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}${brushLayer}${annoLayer}${panelLayer}${legendHost}</div>`,
+    net: h`<div class="plotwrap">${net.element}${brushLayer}${decorLayer}${annoLayer}${panelLayer}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,

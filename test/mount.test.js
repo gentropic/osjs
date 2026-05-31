@@ -290,6 +290,17 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   assert.equal(handle.project.items().at(-1).type, 'annotation');
 });
 
+test('context menu: plot Legend toggle flips project.legendShow', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const before = handle.project.legendShow();
+  handle.net.onContextMenu({ clientX: 5, clientY: 5, dcos: null, id: null });
+  await tick();
+  [...document.querySelector('.ctxmenu').querySelectorAll('.ctx-item')].find((b) => /legend/i.test(b.textContent)).click();
+  await tick();
+  assert.equal(handle.project.legendShow(), !before, 'Legend item toggles the project setting');
+});
+
 test('context menu component: checkmarks render, submenu opens on hover, action closes all', async () => {
   const { openMenu, closeMenu } = await import('../src/ui/contextmenu.js');
   let fired = false;
