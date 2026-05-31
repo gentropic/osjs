@@ -76,6 +76,7 @@ export function mountApp(root) {
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
   const [preview, setPreview] = signal(false);   // presentation mode: hide interactive chrome → camera-ready figure
+  const [selCombine, setSelCombine] = signal('replace');   // default selection combine; Shift/Alt override per-gesture
   const [zoom, setZoom] = signal(1);              // net viewport scale, mirrored for the footer read-out
   const [mode, setMode] = signal('select');   // net interaction: select | measure | rotate | pick
   const [measure, setMeasure] = signal(null);   // last two-click measurement
@@ -1409,7 +1410,7 @@ export function mountApp(root) {
   function wireSelect() {
     let drag = null;
     const local = (e) => { const r = net.element.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    const combineOf = (e) => (e.shiftKey ? 'add' : (e.altKey || e.ctrlKey || e.metaKey) ? 'subtract' : 'replace');
+    const combineOf = (e) => (e.shiftKey ? 'add' : (e.altKey || e.ctrlKey || e.metaKey) ? 'subtract' : selCombine());
     selLayer.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; e.preventDefault(); selLayer.setPointerCapture?.(e.pointerId);
       const m = mode(), p = local(e), cmb = combineOf(e);
@@ -1635,7 +1636,25 @@ export function mountApp(root) {
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
   const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
-  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${label}</button>`;
+  // small stroke icons (inline SVG) for the tools — compact, scannable
+  const ICON = {
+    select: '<path d="M3 2l9 6.5-3.8.6 2.2 4-1.7.9-2.2-4-2.7 2.8z" fill="currentColor" stroke="none"/>',
+    lasso: '<ellipse cx="8" cy="6.5" rx="5.5" ry="4" stroke-dasharray="2 1.4"/><path d="M4.5 10.2c-1 .6-1 1.8 .6 2"/>',
+    cone: '<circle cx="8" cy="8" r="5.6" stroke-dasharray="2 1.4"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
+    rect: '<rect x="2.5" y="3.5" width="11" height="9" rx="1" stroke-dasharray="2 1.4"/>',
+    measure: '<path d="M3 13V3M3 13h10"/><path d="M3 8a5 5 0 0 0 5 5" fill="none"/>',
+    rotate: '<path d="M13 8a5 5 0 1 1-1.6-3.6"/><path d="M13.2 3.2v3h-3"/>',
+    pick: '<circle cx="8" cy="8" r="3.6"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/>',
+  };
+  const SVGNS_ = 'http://www.w3.org/2000/svg';
+  const icon = (name) => { const s = document.createElementNS(SVGNS_, 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('class', 'ic'); s.innerHTML = ICON[name] || ''; return s; };
+  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg ic-btn on' : 'seg ic-btn')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${ICON[m] ? icon(m) : label}</button>`;
+  // selection combine toggle (replace / add / subtract), shown for selection tools
+  const SELTOOLS = ['lasso', 'cone', 'rect'];
+  const combineSeg = h`<span class=${() => (SELTOOLS.includes(mode()) ? 'grp small' : 'grp small hidden')} title="how a new selection combines (Shift = add, Alt = subtract, temporarily)">
+    ${[['replace', '▦', 'replace'], ['add', '＋', 'add'], ['subtract', '−', 'subtract']].map(([v, g, t]) =>
+      h`<button class=${() => (selCombine() === v ? 'seg on' : 'seg')} title=${t} onclick=${() => setSelCombine(v)}>${g}</button>`)}
+  </span>`;
   const cursorText = () => {
     const d = cursor();
     if (!d) return mode() === 'measure' ? 'measure: click two points' : mode() === 'select' ? 'select: click a layer · empty to deselect' : '';
@@ -1737,6 +1756,7 @@ export function mountApp(root) {
       <div class="grp" title="net interaction mode">
         ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('rect', 'rect')}
       </div>
+      ${combineSeg}
       <div class="grp" title="net tools">
         ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
