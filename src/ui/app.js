@@ -78,6 +78,7 @@ export function mountApp(root) {
   const [theme, setTheme] = signal('light');
   const [preview, setPreview] = signal(false);   // presentation mode: hide interactive chrome → camera-ready figure
   const [selCombine, setSelCombine] = signal('replace');   // default selection combine; Shift/Alt override per-gesture
+  const [bandRef, setBandRef] = signal('pole');   // band tool: interpret the clicked point as the great circle's pole or its dip vector
   const [zoom, setZoom] = signal(1);              // net viewport scale, mirrored for the footer read-out
   const [mode, setMode] = signal('select');   // net interaction: select | measure | rotate | pick
   const [measure, setMeasure] = signal(null);   // last two-click measurement
@@ -92,7 +93,7 @@ export function mountApp(root) {
 
   // data selection (lasso/cone/rect → highlight + extract); see ui/selection.js
   const { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, tagSelection, statsSelection, clear: clearSelection, render: renderSelection } =
-    createSelection({ net, project, conversions, vec3, curves: bearing.curves, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m), onDataChange: () => bumpTable() });
+    createSelection({ net, project, conversions, vec3, curves: bearing.curves, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), bandRef: () => bandRef(), onSelect: setSelected, notify: (m) => setNotice(m), onDataChange: () => bumpTable() });
 
   // ── persistence + undo/redo history ──
   // The reactive effect below fires on any project change; it autosaves and, after
@@ -1432,7 +1433,7 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', band: 'band (d): click a plane’s pole, drag → select data within that angle of its great circle · Shift add · Alt subtract', poly: 'polygon (g): click vertices to draw a spherical polygon, click the first point (or double-click) to close · Esc cancel · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', band: 'band (d): click a plane (its pole or dip vector — see the pole/dip toggle), drag → select data within that angle of its great circle · Shift add · Alt subtract', poly: 'polygon (g): click vertices to draw a spherical polygon, click the first point (or double-click) to close · Esc cancel · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
   // small stroke icons (inline SVG) for the tools — compact, scannable
   const ICON = {
     select: '<path d="M3 2l9 6.5-3.8.6 2.2 4-1.7.9-2.2-4-2.7 2.8z" fill="currentColor" stroke="none"/>',
@@ -1453,6 +1454,12 @@ export function mountApp(root) {
   const combineSeg = h`<span class=${() => (SELTOOLS.includes(mode()) ? 'grp small' : 'grp small hidden')} title="how a new selection combines (Shift = add, Alt = subtract, temporarily)">
     ${[['replace', '▦', 'replace'], ['add', '＋', 'add'], ['subtract', '−', 'subtract']].map(([v, g, t]) =>
       h`<button class=${() => (selCombine() === v ? 'seg on' : 'seg')} title=${t} onclick=${() => setSelCombine(v)}>${g}</button>`)}
+  </span>`;
+  // band tool: which line you click — the great circle's pole, or its dip vector
+  // (down-dip line). Only shown while the band tool is active.
+  const bandSeg = h`<span class=${() => (mode() === 'band' ? 'grp small' : 'grp small hidden')} title="band: the point you click is the great circle's pole, or its dip vector">
+    ${[['pole', 'pole', 'click the pole of the plane'], ['dip', 'dip', 'click the dip vector (down-dip line) of the plane']].map(([v, g, t]) =>
+      h`<button class=${() => (bandRef() === v ? 'seg on' : 'seg')} title=${t} onclick=${() => setBandRef(v)}>${g}</button>`)}
   </span>`;
   const cursorText = () => {
     const d = cursor();
@@ -1533,7 +1540,7 @@ export function mountApp(root) {
       <div class="grp" title="net interaction mode">
         ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('rect', 'rect')}${modeSeg('band', 'band')}${modeSeg('poly', 'poly')}
       </div>
-      ${combineSeg}
+      ${combineSeg}${bandSeg}
       <div class="grp" title="net tools">
         ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>

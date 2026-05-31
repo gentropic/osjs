@@ -165,6 +165,27 @@ await check('band edges render as clean in-circle arcs (no back-hemisphere chord
   await page.evaluate(() => window.osjs.commitSelection(() => false));
 });
 
+await check('band dip mode: the great circle passes through the clicked dip vector', async () => {
+  await page.locator('header button[title^="band"]').click();
+  await page.locator('header button[title="click the dip vector (down-dip line) of the plane"]').click();   // pole → dip
+  const b = await netBox();
+  const cx = b.cx + b.w * 0.18, cy = b.cy - b.w * 0.1;     // click an off-centre dip vector
+  await page.mouse.move(cx, cy); await page.mouse.down();
+  await page.mouse.move(cx + b.w * 0.06, cy + b.w * 0.04);  // small drag → narrow band
+  await page.mouse.move(cx + b.w * 0.07, cy + b.w * 0.04);
+  await page.waitForTimeout(40);
+  const minDist = await page.evaluate(([clx, cly, left, top]) => {
+    const rel = [clx - left, cly - top];
+    let best = 1e9;
+    for (const p of document.querySelectorAll('.sellayer .cone')) for (const s of p.getAttribute('points').trim().split(/\s+/)) { const [x, y] = s.split(',').map(Number); best = Math.min(best, Math.hypot(x - rel[0], y - rel[1])); }
+    return best;
+  }, [cx, cy, b.x, b.y]);
+  await page.mouse.up();
+  assert(minDist < 14, `dip-mode great circle does not pass through the clicked dip vector (min dist ${minDist.toFixed(1)}px)`);
+  await page.evaluate(() => window.osjs.commitSelection(() => false));
+  await page.locator('header button[title="click the pole of the plane"]').click();   // restore pole mode
+});
+
 await check('wheel zooms the viewport', async () => {
   await page.evaluate(() => window.osjs.net.resetViewport());
   const b = await netBox();

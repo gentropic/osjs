@@ -19,7 +19,7 @@
  *   mode / selCombine are getters; onSelect = setSelected.
  */
 
-export function createSelection({ net, project, conversions, vec3, curves, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {}, onDataChange = () => {} }) {
+export function createSelection({ net, project, conversions, vec3, curves, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, bandRef = () => 'pole', onSelect, notify = () => {}, onDataChange = () => {} }) {
   const [selection, setSelection] = signal(new Map());
   const selLayer = document.createElement('div'); selLayer.className = 'sellayer';
   const selSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); selSvg.setAttribute('class', 'sel-svg'); selLayer.append(selSvg);
@@ -68,6 +68,17 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     for (const d of pts) { const q = net.placeDcos(d); if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
     if (cur.length > 1) runs.push(cur);
     return runs;
+  }
+  // a band is defined by the pole of its central great circle. If the user clicks
+  // the DIP VECTOR (down-dip line) instead, derive that pole: the plane contains
+  // the dip vector and the (horizontal) strike, so the pole is normal to both.
+  function poleFromDip(v) {
+    const h2 = Math.hypot(v[0], v[1]);
+    if (h2 < 1e-9) return [0, 0, -1];                          // vertical dip vector → horizontal plane → vertical pole
+    const strike = vec3.normalize([-v[1], v[0], 0]);
+    let p = vec3.normalize(vec3.cross(v, strike));
+    if (p[2] > 0) p = vec3.scale(p, -1);                       // keep the pole in the lower hemisphere
+    return p;
   }
   // band outline = central great circle + the two flanking small circles (the
   // band is everything within `w` of the great circle, i.e. acos|dot|≥π/2−w). The
@@ -131,7 +142,7 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     if (m === 'lasso') drag = { tool: 'lasso', pts: [p], cmb };
     else if (m === 'rect') drag = { tool: 'rect', start: p, cmb };
     else if (m === 'cone') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'cone', axis: conversions.lineToDcos(c[0], c[1]), r: 0, cmb } : null; }
-    else if (m === 'band') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'band', axis: conversions.lineToDcos(c[0], c[1]), w: 0, cmb } : null; }
+    else if (m === 'band') { const c = net.locate('attitude', p[0], p[1]); if (c) { let ax = conversions.lineToDcos(c[0], c[1]); if (bandRef() === 'dip') ax = poleFromDip(ax); drag = { tool: 'band', axis: ax, w: 0, cmb }; } else drag = null; }
   });
   selLayer.addEventListener('dblclick', (e) => { if (mode() === 'poly' && polyVerts && polyVerts.length >= 3) { e.preventDefault(); closePoly(); } });
   selLayer.addEventListener('pointermove', (e) => {
