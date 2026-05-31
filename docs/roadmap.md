@@ -140,6 +140,18 @@ long-press on touch); zero-dep, same `h`/signal idiom as the rest of the shell.
 - *with an active selection*: extract → new layer · tag-to-set · recolour · invert
   · clear (ties into the Selections flagship)
 
+**Clipboard / copy-as** (cross-surface, a recurring win):
+- *copy attitude as…* — right-click a point on the net → copy the cursor (or a
+  picked datum's) attitude in a chosen format: **trend/plunge** (line/point),
+  **dip-dir/dip** or **strike/dip** (plane), the **pole** to that plane, **dcos**
+  `[x,y,z]`, lat/lon. A submenu of representations off one location.
+- copy a datum / selection / whole layer as CSV (the table's columns) · copy stats
+  block · copy the figure as SVG/PNG (already a button, mirror it here).
+- **paste** to create: paste trend/plunge or dd/dip text → new measurements in the
+  active (or a new) layer; paste an image/SVG onto the composition overlay later.
+- format is a small shared "attitude formatter" (line vs plane vs pole vs dcos),
+  reusable by the footer read-out, table cells, and export — write it once.
+
 **Cross-cutting**: the menu is context-sensitive (hit-test via the same `dsId`
 layer-resolution that select mode uses; detect annotation vs primitive vs empty);
 respect the active selection; mobile long-press; suppress the native browser menu
