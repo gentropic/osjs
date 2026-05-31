@@ -138,6 +138,9 @@ long-press on touch); zero-dep, same `h`/signal idiom as the rest of the shell.
 - group / ungroup · move to group
 - quick colour · change colour-by · change item type (plane↔pole)
 - zoom/centre on this layer · open its table · stats popup · export this layer
+- float its table over the plot · **reset its floating table** (size + position to
+  default) — recovery when a table is dragged/resized past where its handles are
+  reachable. Also available by right-clicking the panel itself.
 - (on a group) collapse/expand all · merge children
 
 **Plot area** (right-click the net — branch on the hit):
