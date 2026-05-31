@@ -349,20 +349,14 @@ FaultSet.LAYERS = [
   ...COMMON_LAYERS,
 ];
 
-// A text annotation on the net: a label at an attitude, with an optional leader
-// line to a target attitude. Content lives in `style` so it serializes for free.
+// A text annotation: a label placed in attitude space [trend, plunge] or figure
+// space (normalised −1..1 about the net centre), with an optional leader to a
+// target (each endpoint independently spaced). Rendered by the UI overlay (draggable,
+// repositioned on rotation) — NOT a plot primitive — so contribute() is empty.
+// Content (text/anchor/anchorSpace/leader/leaderSpace/color/fontSize/bold) lives in
+// `style`, so it serializes + undoes for free.
 export class Annotation extends DataItem {
-  contribute(space) {
-    if (space !== 'net') return [];
-    const st = this.style();
-    const at = st.anchor || [0, 90];
-    const dir = conversions.lineToDcos(at[0], at[1]);
-    const out = [text(dir, st.text || '', {
-      fill: st.color || '#1d2733', fontSize: st.fontSize || 13, fontWeight: st.bold ? 700 : 400, textAnchor: 'middle',
-    }, { item: this.id })];
-    if (st.leader) out.push(polyline([conversions.lineToDcos(st.leader[0], st.leader[1]), dir], { color: st.color || '#1d2733', width: 1 }, { item: this.id, leader: true }));
-    return out;
-  }
+  contribute() { return []; }
   stats() { return null; }
 }
 Annotation.kind = 'annotation';

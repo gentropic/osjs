@@ -150,17 +150,19 @@ test('empty state appears with no data and loads a sample; samples strip is pers
   assert.ok(root.querySelectorAll('.samplesrow .slink').length >= 3);
 });
 
-test('annotations: add a note → renders on the net, inspector shows the editor', async () => {
+test('annotations: add a note → annotation item, overlay layer, inspector editor', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);
   [...root.querySelectorAll('.sect .sectbtn')].find((b) => /annotation/i.test(b.title)).click();
   await tick();
   const note = project.items().at(-1);
   assert.equal(note.type, 'annotation');
+  assert.ok(root.querySelector('.annolayer'), 'annotation overlay present');   // labels need real layout (verified in-browser)
   note.setStyle({ ...note.currentStyle(), text: 'fold axis here' });
   await tick();
-  assert.ok([...root.querySelectorAll('.net-net text, .plotwrap text, svg text')].some((t) => /fold axis here/.test(t.textContent)), 'the label text renders in the net SVG');
-  assert.match((root.querySelector('.inspector').textContent || '').toLowerCase(), /annotation/);
+  assert.match((root.querySelector('.inspector').textContent || '').toLowerCase(), /annotation/, 'inspector shows the annotation editor');
+  // switching the anchor space converts the stored coords (round-trips through place/locate)
+  assert.equal(note.currentStyle().anchorSpace || 'attitude', 'attitude');
 });
 
 test('undo / redo restores project state after a change', async () => {

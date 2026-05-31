@@ -632,18 +632,28 @@ export function mountApp(root) {
       const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
       const a = [...(st.anchor || [0, 90])], setA = (k, v) => { a[k] = +v; set({ anchor: [...a] }); };
       const l = [...(st.leader || st.anchor || [0, 90])], setL = (k, v) => { l[k] = +v; set({ leader: [...l] }); };
+      // switch a coordinate space, converting the point so it stays put visually
+      const setSpace = (key, coordKey, v) => {
+        const cs = item.currentStyle(), old = cs[key] || 'attitude', cur = cs[coordKey];
+        if (old !== v && cur) { const p = net.place(old, cur[0], cur[1]); const nc = net.locate(v, p.x, p.y); item.setStyle({ ...cs, [key]: v, ...(nc ? { [coordKey]: nc } : {}) }); }
+        else item.setStyle({ ...cs, [key]: v });
+      };
+      const spaceSeg = (key, coordKey) => seg(() => item.style()[key] || 'attitude', (v) => setSpace(key, coordKey, v), [['attitude', 'attitude'], ['figure', 'figure']]);
       return h`<div class="pbody">
         <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
-        <div class="ptype">annotation</div>
+        <div class="ptype">annotation · drag it on the net to place</div>
         <div class="istit">text</div>
         ${field('label', h`<input class="ni" value=${st.text || ''} oninput=${(e) => set({ text: e.target.value })}>`)}
         ${field('color', h`<input type="color" value=${st.color || '#1d2733'} oninput=${(e) => set({ color: e.target.value })}>`)}
         ${field('size', num(st.fontSize ?? 13, 8, 36, 1, (e) => set({ fontSize: +e.target.value })))}
         ${field('bold', chips(chip('bold', () => !!item.style().bold, () => set({ bold: !item.currentStyle().bold }))))}
-        <div class="istit">placement</div>
-        ${field('anchor (t/p)', h`<span class="fv">${num(a[0], 0, 360, 1, (e) => setA(0, e.target.value))}${num(a[1], 0, 90, 1, (e) => setA(1, e.target.value))}</span>`)}
-        ${field('leader', chips(chip('show', () => !!item.style().leader, () => set({ leader: item.currentStyle().leader ? null : [...(item.currentStyle().anchor || [0, 90])] }))))}
-        ${field('points to', h`<span class="fv">${num(l[0], 0, 360, 1, (e) => setL(0, e.target.value))}${num(l[1], 0, 90, 1, (e) => setL(1, e.target.value))}</span>`)}
+        <div class="istit">anchor</div>
+        ${field('space', spaceSeg('anchorSpace', 'anchor'))}
+        ${field('at', h`<span class="fv">${num(a[0], -360, 360, 0.1, (e) => setA(0, e.target.value))}${num(a[1], -90, 90, 0.1, (e) => setA(1, e.target.value))}</span>`)}
+        <div class="istit">leader</div>
+        ${field('show', chips(chip('show', () => !!item.style().leader, () => set({ leader: item.currentStyle().leader ? null : [...(item.currentStyle().anchor || [0, 90])] }))))}
+        ${field('space', spaceSeg('leaderSpace', 'leader'))}
+        ${field('to', h`<span class="fv">${num(l[0], -360, 360, 0.1, (e) => setL(0, e.target.value))}${num(l[1], -90, 90, 0.1, (e) => setL(1, e.target.value))}</span>`)}
       </div>`;
     }
     return h`<div class="pbody">
@@ -774,13 +784,63 @@ export function mountApp(root) {
     <div class="es-hint">tip — in the projection view, drag between two points to measure an angle</div>
   </div></div>`;
   effect(() => { emptyState.style.display = project.items().length ? 'none' : 'flex'; });
+
+  // ── annotation overlay (composition layer over the net) ──
+  // Draggable labels + leader lines positioned over the net SVG; repositioned on
+  // rotation/resize via net.onAfterRender. Annotations are overlay elements, not
+  // plot primitives. Anchor/leader each live in attitude or figure space.
+  const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
+  const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
+  function dragAnno(e, a, el) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    el.setPointerCapture?.(e.pointerId);
+    const space = a.style().anchorSpace || 'attitude'; let coords = null;
+    const move = (ev) => {
+      const sr = net.element.getBoundingClientRect();
+      const px = ev.clientX - sr.left, py = ev.clientY - sr.top;
+      const c = net.locate(space, px, py); if (!c) return;
+      coords = c; el.style.left = `${px}px`; el.style.top = `${py}px`;
+      const line = annoLeaders.querySelector(`[data-anno="${a.id}"]`);
+      if (line) { line.setAttribute('x2', px); line.setAttribute('y2', py); }
+    };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); if (coords) a.setStyle({ ...a.currentStyle(), anchor: coords }); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+  }
+  function renderAnnos() {
+    const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return;
+    const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+    if (!sr.width) { annoLayer.replaceChildren(); return; }            // not laid out (hidden tab / headless)
+    annoLayer.style.cssText = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
+    const annos = project.visibleLeaves().filter((it) => it.type === 'annotation');
+    const lines = [], labels = [];
+    for (const a of annos) {
+      const st = a.style();
+      const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
+      if (st.leader) { const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]); lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${anchor.x}" y2="${anchor.y}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`); }
+      const el = document.createElement('div');
+      el.className = `anno-label${anchor.hidden ? ' under' : ''}${selected() === a ? ' sel' : ''}`;
+      el.style.left = `${anchor.x}px`; el.style.top = `${anchor.y}px`;
+      el.style.color = st.color || '#1d2733'; el.style.fontSize = `${st.fontSize || 13}px`; el.style.fontWeight = st.bold ? 700 : 400;
+      el.textContent = st.text || 'note';
+      el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      el.addEventListener('pointerdown', (ev) => dragAnno(ev, a, el));
+      labels.push(el);
+    }
+    annoLeaders.innerHTML = lines.join('');
+    annoLayer.replaceChildren(annoLeaders, ...labels);
+  }
+  net.onAfterRender = renderAnnos;
+  effect(() => { project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // rebuild on add/edit/remove
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(renderAnnos).observe(annoLayer.parentElement || document.body);
+
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}${legendHost}</div>`,
+    net: h`<div class="plotwrap">${net.element}${annoLayer}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
   };
-  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; });
+  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(renderAnnos); });
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;

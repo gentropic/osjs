@@ -72,8 +72,25 @@ export class NetRenderer {
   }
 
   // numeric view: bring a trend/plunge to the centre, or reset to default
-  setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); }
-  resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); }
+  setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
+  resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
+
+  // place a coord in the net → CSS px relative to the SVG top-left (for overlays);
+  // 'attitude' [trend,plunge] follows rotation, 'figure' [u,v] is normalised (−1..1
+  // about the centre, fixed under rotation). locate() is the inverse, for dragging.
+  _k() { return (this._el.getBoundingClientRect().width || this.sn.size) / this.sn.size; }
+  place(space, a, b) {
+    const k = this._k();
+    if (space === 'figure') { const L = this.sn.layout; return { x: (L.center + a * L.radius) * k, y: (L.center - b * L.radius) * k, hidden: false }; }
+    const p = this.sn.project(conversions.lineToDcos(a, b));
+    return { x: p.x * k, y: p.y * k, hidden: !!p.upper };
+  }
+  locate(space, x, y) {
+    const k = this._k(), sx = x / k, sy = y / k;
+    if (space === 'figure') { const L = this.sn.layout; return [(sx - L.center) / L.radius, (L.center - sy) / L.radius]; }
+    const d = this.sn.unproject(sx, sy);
+    return d ? conversions.dcosToLine(d) : null;
+  }
 
   render() {
     const proj = this.project.projection();
@@ -85,6 +102,7 @@ export class NetRenderer {
     for (const p of this.project.contribute('net')) this._draw(p);
     this._drawMeasure();
     sn.render();
+    this.onAfterRender?.();
   }
 
   // two-click measurement overlay: the picked point(s), the great circle through
@@ -164,6 +182,7 @@ export class NetRenderer {
           const arc = sn.arcball(cur.x, cur.y, p.x, p.y);
           sn.setRotation(mat3.orthonormalize(sn.rotation ? mat3.multiply(arc, sn.rotation) : arc));
           sn.updateContours(); sn.render();
+          this.onAfterRender?.();
           cur = p;
         } else if (this.mode === 'measure' && moved && this._measure) {  // drag → measure A→B
           const b = sn.unproject(p.x, p.y);

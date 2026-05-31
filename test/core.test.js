@@ -172,22 +172,20 @@ test('small circles contribute an axis point + a cone per datum (aperture as ang
   assert.equal(SmallCircleSet.GEOM.length, 3);              // trend / plunge / aperture
 });
 
-test('annotation contributes a text label (+ optional leader) only to the net', () => {
-  const a = new Annotation({ name: 'n', style: { text: 'fold axis', anchor: [120, 30] } });
-  const net = a.contribute('net');
-  assert.equal(net.length, 1);
-  assert.equal(net[0].kind, 'text');
-  assert.equal(net[0].content, 'fold axis');
+test('annotation: content lives in style, emits no plot primitive, round-trips', () => {
+  const a = new Annotation({ name: 'n', style: { text: 'fold axis', anchor: [120, 30], anchorSpace: 'figure' } });
+  assert.deepEqual(a.contribute('net'), []);     // rendered by the UI overlay, not a primitive
   assert.equal(a.contribute('rose').length, 0);
   assert.equal(a.stats(), null);
-  a.setStyle({ ...a.currentStyle(), leader: [200, 10] });
-  const withLeader = a.contribute('net');
-  assert.ok(withLeader.some((p) => p.kind === 'polyline' && p.source.leader));
-  // content round-trips (it lives in style)
+  assert.equal(a.currentStyle().text, 'fold axis');
+  // content + spaces round-trip (they live in style)
   const p = new Project(); p.add(a);
   const q = new Project(); loadProject(q, JSON.parse(JSON.stringify(serializeProject(p))));
-  assert.equal(q.items()[0].type, 'annotation');
-  assert.equal(q.items()[0].contribute('net')[0].content, 'fold axis');
+  const r = q.items()[0];
+  assert.equal(r.type, 'annotation');
+  assert.equal(r.currentStyle().text, 'fold axis');
+  assert.deepEqual(r.currentStyle().anchor, [120, 30]);
+  assert.equal(r.currentStyle().anchorSpace, 'figure');
 });
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
