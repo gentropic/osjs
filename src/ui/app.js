@@ -1272,6 +1272,46 @@ export function mountApp(root) {
     }
     return prims;
   }
+  // ── legend scene (declarative primitives for export) ──
+  // Modelled layout (not a DOM scrape): rows of swatch/name/category/ramp built
+  // from the colour model, sized with the canvas measurer, stacked in a box at the
+  // legend's figure anchor. Net-relative; the export translates by the net offset.
+  // Models the .lg / .lgitem / .lgbar metrics in index.html — keep in sync.
+  function legendScene() {
+    const vis = project.visibleLeaves().filter((it) => it.type !== 'annotation');
+    if (!project.legendShow() || !vis.length) return [];
+    const cs = getComputedStyle(document.body), cssv = (n, fb) => ((cs.getPropertyValue(n) || '').trim() || fb);
+    const ui = cs.fontFamily || 'sans-serif', mono = cssv('--mono', 'monospace');
+    const ink = cssv('--ink', '#1d2733'), inkDim = cssv('--ink-dim', '#55606b'), inkFaint = cssv('--ink-faint', '#94a0ac');
+    const panel = cssv('--panel', '#ffffff'), lineC = cssv('--line', '#dfe4ea'), line2 = cssv('--line-2', '#c4ccd6');
+    const SW = 11, BARW = 84, BARH = 9, GAP = 7, ROWGAP = 5, PADX = 10, PADY = 8, NF = 11, CF = 10, N = 20;
+    const seg = {
+      swatch: (fill) => ({ w: SW, h: SW, gap: GAP, emit: (x, cy) => [{ t: 'rect', x, y: cy - SW / 2, w: SW, h: SW, rx: 3, fill, stroke: 'rgba(0,0,0,0.12)', sw: 1 }] }),
+      txt: (str, font, fill, bold, fam) => ({ w: measureLabelW(str, font, bold, fam || ui), h: font * 1.2, gap: GAP, emit: (x, cy) => [{ t: 'text', x, y: cy, text: str, size: font, weight: bold ? 700 : 400, family: fam || ui, fill, anchor: 'start', baseline: 'central' }] }),
+      bar: (slices) => ({ w: BARW, h: BARH, gap: GAP, emit: (x, cy) => { const sw = BARW / slices.length, p = slices.map((s, i) => ({ t: 'rect', x: x + i * sw, y: cy - BARH / 2, w: sw + 0.6, h: BARH, fill: s.fill, opacity: s.opacity })); p.push({ t: 'rect', x, y: cy - BARH / 2, w: BARW, h: BARH, rx: 3, fill: 'none', stroke: line2, sw: 1 }); return p; } }),
+    };
+    const rampSlices = (ramp, rev) => Array.from({ length: N }, (_, i) => { const t = i / (N - 1); return { fill: color.sampleScale(ramp, rev ? 1 - t : t) }; });
+    const densitySlices = (cRamp, c) => (cRamp === 'item' ? Array.from({ length: N }, (_, i) => ({ fill: c, opacity: 0.12 + 0.88 * (i / (N - 1)) })) : rampSlices(cRamp, false));
+    const rowOf = (item) => {
+      if (item.layers().heatmap) return [seg.txt(item.name(), NF, ink, true), seg.bar(densitySlices(item.params().cRamp || 'item', item.style().color || '#888')), seg.txt('density', CF, inkFaint, false, mono)];
+      const lg = item.colorLegend();
+      if (lg && lg.type === 'categorical') { const segs = [seg.txt(item.name(), NF, ink, true)]; for (const [v, c] of lg.entries.slice(0, 8)) { const sw = seg.swatch(c); sw.gap = 4; segs.push(sw, seg.txt(v || '∅', CF, inkDim, false, mono)); } return segs; }
+      if (lg && lg.type === 'ramp') return [seg.txt(item.name(), NF, ink, true), seg.txt(lg.column, NF, ink, true), seg.bar(rampSlices(lg.ramp, lg.reverse)), seg.txt(`${fmtNum(lg.min)} – ${fmtNum(lg.max)}`, CF, inkFaint, false, mono)];
+      return [seg.swatch(item.style().color || '#888'), seg.txt(item.name(), NF, inkDim, false)];
+    };
+    const rows = vis.map(rowOf);
+    const dims = rows.map((segs) => { let x = 0, h = 0; segs.forEach((s, i) => { s._x = x; h = Math.max(h, s.h); x += s.w + (i < segs.length - 1 ? s.gap : 0); }); return { w: x, h }; });
+    const contentW = Math.max(0, ...dims.map((d) => d.w)), contentH = dims.reduce((a, d) => a + d.h, 0) + ROWGAP * (rows.length - 1);
+    const boxW = contentW + 2 * PADX, boxH = contentH + 2 * PADY;
+    const pos = net.place('figure', ...project.legendPos());
+    const prims = [
+      { t: 'rect', x: pos.x, y: pos.y, w: boxW, h: boxH, rx: 6, fill: panel, opacity: 0.86 },
+      { t: 'rect', x: pos.x, y: pos.y, w: boxW, h: boxH, rx: 6, fill: 'none', stroke: lineC, sw: 1 },
+    ];
+    let cy = pos.y + PADY;
+    rows.forEach((segs, ri) => { const rcy = cy + dims[ri].h / 2; for (const s of segs) prims.push(...s.emit(pos.x + PADX + s._x, rcy)); cy += dims[ri].h + ROWGAP; });
+    return prims;
+  }
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
   function renderAnnos() {
@@ -1460,7 +1500,7 @@ export function mountApp(root) {
     fig.addEventListener('pointerup', () => { if (pan) { pan = null; fig.style.cursor = ''; } });
   }
   // composed export pipeline (the @gcu/compo seed — see render/figure-export.js)
-  const { nativeFigure, composeFigureSVG, exportSVG, exportPNG, printFigure } = createExport({ net, project, getWrap: () => wraps[activeTab()] || wraps.net, pageFrame, scene: () => (activeTab() === 'net' ? annoScene() : []), notify: setNotice });
+  const { nativeFigure, composeFigureSVG, exportSVG, exportPNG, printFigure } = createExport({ net, project, getWrap: () => wraps[activeTab()] || wraps.net, pageFrame, scene: () => (activeTab() === 'net' ? [...legendScene(), ...annoScene()] : []), notify: setNotice });
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──

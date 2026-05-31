@@ -208,6 +208,14 @@ await check('composed export builds a real SVG with net + overlay', async () => 
   assert(/<text[^>]*>note<\/text>|>note</.test(fig.svg) || /<svg/.test(fig.svg.slice(60)), 'net not embedded');
 });
 
+await check('legend exports from the scene at real geometry (names + box)', async () => {
+  const svg = await page.evaluate(() => window.osjs.nativeFigure().svg);
+  assert(/>bedding</.test(svg) && /></.test(svg), 'legend layer name missing from native export');
+  assert(/>joints</.test(svg), 'legend missing a visible layer');
+  // the legend box should sit inside the figure (positive, finite coords)
+  assert(!/NaN|undefined/.test(svg), 'legend/scene produced NaN/undefined coordinates');
+});
+
 await browser.close();
 server.close();
 

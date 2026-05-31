@@ -35,13 +35,17 @@ Works figures), lift it into **`@gcu/compo`** — overlay layer + element/primit
 model + coordinate-space adapters + DOM & SVG renderers + the context-menu/toolbar
 chrome. Until then it lives in OSJS and we keep the API churning freely.
 
-**Phasing.** (1) *Modularize* — carve the composer/export subsystem out of the
-monolithic `app.js` into focused modules (clear seams, smaller files) without
-changing behavior — the safe first step + the future package boundary. (2)
-*Scene-ify* the simple elements (annotations, legend, title, page) onto declarative
-primitives with a shared SVG renderer; keep layout-heavy tables reading rendered
-geometry until their layout is modeled. (3) Unify the DOM renderer onto the same
-primitives. (4) Extract `@gcu/compo` when a second surface needs it.
+**Phasing.** (1) ✅ *Modularize* — carved `render/figure-export.js` + `ui/selection.js`
+out of `app.js` without behavior change. (2) *Scene-ify* the simple elements onto
+declarative primitives + a shared SVG renderer (`render/scene.js`): ✅ vocabulary +
+`sceneToSVG`/`primsToMarkup` (unit-tested); ✅ annotations/title (`annoScene`) and ✅
+legend (`legendScene`, layout modelled — fixes gradient bars the style-scrape never
+captured) now emit primitives from the model + `net.place`, with the export
+SKIPping their live DOM (`.annolayer`/`.decorlayer`). Page frame is just the crop
+boundary (not drawn). Layout-heavy tables still read rendered geometry (emitPanel)
+until their layout is modeled. (3) Unify the DOM renderer onto the same primitives
+(currently DOM is still hand-built; scene is export-only). (4) Extract `@gcu/compo`
+when a second surface needs it.
 
 ## Selections (flagship idea)
 

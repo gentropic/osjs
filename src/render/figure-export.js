@@ -21,9 +21,9 @@ const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&
 const n2 = (v) => Math.round(v * 100) / 100;
 // transient UI (brush / selection) + interactive chrome are kept out of exports;
 // .floatpanel is handled specially (clean caption + grid) by emitPanel.
-// .annolayer is emitted from the declarative scene (createExport's `scene` dep),
-// not scraped — so skip the live anno DOM in the walk.
-const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.brushlayer,.sellayer,.gutter,.pageframe,.floatpanel,.annolayer';
+// .annolayer + .decorlayer (legend) are emitted from the declarative scene
+// (createExport's `scene` dep), not scraped — so skip those live DOM layers.
+const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.brushlayer,.sellayer,.gutter,.pageframe,.floatpanel,.annolayer,.decorlayer';
 const EXPORT_VARS = ['--bg', '--panel', '--panel-2', '--raised', '--line', '--line-2', '--ink', '--ink-dim', '--ink-faint', '--amber', '--accent-text', '--cyan', '--cyan-text', '--on-accent', '--canvas-bg', '--canvas-grid', '--vignette', '--ui', '--mono'];
 
 export function createExport({ net, project, getWrap, pageFrame, scene = () => [], notify = () => {} }) {

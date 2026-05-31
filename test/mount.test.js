@@ -346,6 +346,22 @@ test('export: annotations come from the declarative scene (centered <text>), not
   assert.match(m[0], /font-weight="700"/, 'bold carried from the model');
 });
 
+test('export: legend renders from the scene — names, and a gradient bar for ramp colouring', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const { svg: base } = handle.nativeFigure();
+  assert.match(base, />bedding</, 'legend lists the layer name');
+  assert.match(base, />joints</, 'legend lists every visible layer');
+  const baseRects = (base.match(/<rect/g) || []).length;
+  // switch a layer to ramp colouring → the legend grows a gradient bar, which the
+  // old computed-style scrape could never capture (linear-gradient backgrounds)
+  const it = handle.project.items()[0];
+  it.setStyle({ ...it.currentStyle(), colorMode: 'ramp', colorBy: 0, colorRamp: 'viridis' });
+  await tick();
+  const { svg: ramp } = handle.nativeFigure();
+  assert.ok((ramp.match(/<rect/g) || []).length > baseRects + 10, 'ramp legend emits the gradient as slice rects');
+});
+
 test('footer zoom control: reflects the viewport and the % resets to 100%', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);
