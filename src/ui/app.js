@@ -1508,8 +1508,8 @@ export function mountApp(root) {
   }
   // print the composed figure via a hidden iframe (the figure is the only thing in
   // that document → a clean page), rather than window.print() of the whole app.
-  function printFigure() {
-    const { svg, w, h } = composeFigureSVG();
+  async function printFigure() {
+    const { svg, w, h } = nativeFigure(await embeddedFontCSS());   // native render (explicit rects/text → legend colours, tables, fonts all carry)
     // fit ONE A4 page (10mm margins → 190×277mm printable), preserving aspect, so
     // the figure never spills onto a second sheet
     let dw = 190, dh = 190 * h / w;
