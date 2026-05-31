@@ -806,17 +806,19 @@ export function mountApp(root) {
       ...(edit ? [h`<div class="th tdel"></div>`] : []),
     ];
     meas.forEach((m, i) => {
-      cells.push(h`<div class="td rownum">${i + 1}</div>`);
-      geom.forEach((g, k) => cells.push(h`<div class="td" data-col=${k}>${cell(m[k], (v) => setMeas(i, k, v))}</div>`));
-      cols.forEach((c, ci) => cells.push(h`<div class="td" data-col=${geom.length + ci}>${cell(c.values[i] ?? '', (v) => setCell(ci, i, v))}</div>`));
-      if (edit) cells.push(h`<div class="td tdel"><button class="rm" title="delete row" onclick=${() => delRow(i)}>×</button></div>`);
+      cells.push(h`<div class="td rownum" data-row=${i}>${i + 1}</div>`);
+      geom.forEach((g, k) => cells.push(h`<div class="td" data-row=${i} data-col=${k}>${cell(m[k], (v) => setMeas(i, k, v))}</div>`));
+      cols.forEach((c, ci) => cells.push(h`<div class="td" data-row=${i} data-col=${geom.length + ci}>${cell(c.values[i] ?? '', (v) => setCell(ci, i, v))}</div>`));
+      if (edit) cells.push(h`<div class="td tdel" data-row=${i}><button class="rm" title="delete row" onclick=${() => delRow(i)}>×</button></div>`);
     });
+    // hover a row → brush its datum on the net (delegated; leaves clear the ring)
+    const rowHover = (e) => { const r = e.target.closest('[data-row]'); if (r) highlightPoint(item, +r.dataset.row); else clearHighlight(); };
     return h`<div class="tablebox">
       <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
         ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
         <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button></div>
-      <div class="tscroll"><div class="dtable" style=${{ gridTemplateColumns: buildGrid(work) }}>${cells}</div></div>
+      <div class="tscroll"><div class="dtable" data-item=${item.id} onpointermove=${rowHover} onpointerleave=${clearHighlight} style=${{ gridTemplateColumns: buildGrid(work) }}>${cells}</div></div>
     </div>`;
   }
 
@@ -837,6 +839,9 @@ export function mountApp(root) {
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
   const panelLayer = document.createElement('div'); panelLayer.className = 'panellayer';
+  const brushLayer = document.createElement('div'); brushLayer.className = 'brushlayer';
+  const brushRing = document.createElement('div'); brushRing.className = 'brushring'; brushRing.style.display = 'none';
+  brushLayer.append(brushRing);
   const px = (v) => parseFloat(v) || 0;
   let overlayDragging = false;                          // suppress rebuilds while an overlay element is being dragged
   const arrowD = (tx, ty, ex, ey) => {                  // triangle at the target, pointing along the leader
@@ -895,9 +900,44 @@ export function mountApp(root) {
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
     const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    annoLayer.style.cssText = box; panelLayer.style.cssText = box;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box;
     return true;
   }
+  // ── linked identify / brushing (table ⇄ plot) ──
+  // hover a row → ring on the net at that datum; click a datum → flash its row(s).
+  function highlightPoint(item, i) {
+    const v = item.dcos()[i]; if (!v || !fitOverlay()) { clearHighlight(); return; }
+    const [t, p] = conversions.dcosToLine(v);
+    const pt = net.place('attitude', t, p);
+    brushRing.style.left = `${pt.x}px`; brushRing.style.top = `${pt.y}px`;
+    brushRing.classList.toggle('back', !!pt.hidden);
+    brushRing.style.display = '';
+  }
+  function clearHighlight() { brushRing.style.display = 'none'; }
+  // nearest plotted datum to a clicked direction (great-circle distance for planes,
+  // angular distance for point-like items); returns its row index or -1.
+  function nearestDatum(item, dcos) {
+    const ds = item.dcos(); let best = -1, bestAng = Infinity;
+    for (let i = 0; i < ds.length; i++) {
+      const v = ds[i], dot = Math.min(1, Math.abs(dcos[0] * v[0] + dcos[1] * v[1] + dcos[2] * v[2]));
+      const a = Math.acos(dot), dist = item.type === 'planes' ? Math.abs(Math.PI / 2 - a) : a;
+      if (dist < bestAng) { bestAng = dist; best = i; }
+    }
+    return bestAng < 6 * Math.PI / 180 ? best : -1;                    // within ~6°
+  }
+  function flashDatum(item, i) {
+    highlightPoint(item, i); setTimeout(clearHighlight, 1300);
+    for (const dt of root.querySelectorAll(`.dtable[data-item="${item.id}"]`)) {
+      const cells = dt.querySelectorAll(`[data-row="${i}"]`);
+      cells.forEach((c) => { c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1300); });
+      cells[0]?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }
+  net.onIdentify = (dcos, id) => {
+    const item = project.items().find((x) => x.id === id);
+    if (!item || item.type === 'annotation') return;
+    const i = nearestDatum(item, dcos); if (i >= 0) flashDatum(item, i);
+  };
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
   function renderAnnos() {
@@ -1057,7 +1097,7 @@ export function mountApp(root) {
   effect(() => { const s = selected(); for (const el of panelLayer.querySelectorAll('.floatpanel')) el.classList.toggle('sel', !!s && el.dataset.panel === s.id); });
 
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}${annoLayer}${panelLayer}${legendHost}</div>`,
+    net: h`<div class="plotwrap">${net.element}${brushLayer}${annoLayer}${panelLayer}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,

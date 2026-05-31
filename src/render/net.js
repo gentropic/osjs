@@ -62,6 +62,7 @@ export class NetRenderer {
     this.onPick = null;
     this.onMeasure = null;
     this.onSelect = null;         // (itemId|null) — select mode: click a layer / empty to deselect
+    this.onIdentify = null;       // (dcos, itemId|null) — select click: linked identify (flash nearest datum's row)
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -219,7 +220,11 @@ export class NetRenderer {
       if (rotKey) { /* temporary rotate — no tool action */ }
       else if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
       else if (this.mode === 'measure' && wasClick) { this._measure = null; this.render(); }  // click (no drag) cancels
-      else if (this.mode === 'select' && wasClick && this.onSelect) this.onSelect(dsId(this._downEl, el));  // null = empty → deselect
+      else if (this.mode === 'select' && wasClick) {
+        const id = dsId(this._downEl, el);
+        if (this.onSelect) this.onSelect(id);             // null = empty → deselect
+        if (this.onIdentify && id && d) this.onIdentify(d, id);   // flash the nearest datum's table row
+      }
       this._syncCursor();
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });

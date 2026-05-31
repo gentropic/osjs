@@ -232,6 +232,20 @@ test('floating table: the float button opens a table panel on the selected layer
   assert.equal(it.currentParams().tableOpen, true, 'the layer table is now flagged to float');
 });
 
+test('linked identify: clicking near a datum flashes its table row', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const it = handle.project.items().find((x) => x.type === 'poles' || x.type === 'lines');
+  assert.ok(it && it.measurements().length, 'seeded with a point-like layer');
+  handle.net.onSelect(it.id); await tick();              // its table renders in the (hidden) table tab
+  handle.net.onIdentify(it.dcos()[0], it.id);            // identify by the first datum's own direction
+  const flashed = root.querySelector(`.dtable[data-item="${it.id}"] [data-row="0"].flash`);
+  assert.ok(flashed, 'the matching row is flashed');
+  // a direction far from every datum identifies nothing
+  handle.net.onIdentify([1, 0, 0], it.id);               // horizontal N — far from the steep poles
+  // (no assertion on absence beyond not throwing; nearestDatum returns -1)
+});
+
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
   const t = trend * Math.PI / 180, p = plunge * Math.PI / 180;
   return [Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t), -Math.sin(p)];
