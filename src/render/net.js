@@ -64,6 +64,7 @@ export class NetRenderer {
     this.onSelect = null;         // (itemId|null) — select mode: click a layer / empty to deselect
     this.onIdentify = null;       // (dcos, itemId|null) — select click: linked identify (flash nearest datum's row)
     this.onContextMenu = null;    // ({clientX, clientY, dcos, id}) — right-click on the net
+    this._vp = { tx: 0, ty: 0, scale: 1 };   // viewport: CSS pan/zoom over the net (rect-based, so overlays follow)
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -82,11 +83,35 @@ export class NetRenderer {
     this.sn = next;
     this._el = el;
     this._wirePointer();
+    this._applyViewport();
   }
 
   // numeric view: bring a trend/plunge to the centre, or reset to default
   setView(trend, plunge) { this.sn.setCenter(trend, plunge); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
   resetView() { this.sn.setRotation(null); this.sn.updateContours(); this.sn.render(); this.onAfterRender?.(); }
+
+  // ── viewport (pan/zoom over the net, via a CSS transform on the SVG) ──
+  // Overlay positioning is rect-based, so transforming the SVG and re-running the
+  // overlay reposition (onAfterRender) keeps everything aligned — no projection or
+  // bearing change. transform-origin 0 0 keeps the zoom-to-cursor math simple.
+  _applyViewport() {
+    const v = this._vp;
+    if (this._el) {
+      this._el.style.transformOrigin = '0 0';
+      this._el.style.transform = (v.tx || v.ty || v.scale !== 1) ? `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})` : '';
+    }
+    this.onAfterRender?.();
+  }
+  zoomAt(mult, clientX, clientY) {
+    const r = this._el.getBoundingClientRect();
+    const s = Math.max(0.3, Math.min(8, this._vp.scale * mult)), m = s / this._vp.scale;   // clamp, then real multiplier
+    const fx = clientX - r.left, fy = clientY - r.top;          // cursor px from the net's current top-left
+    this._vp.tx += fx * (1 - m); this._vp.ty += fy * (1 - m);   // keep the point under the cursor fixed
+    this._vp.scale = s; this._applyViewport();
+  }
+  panBy(dx, dy) { this._vp.tx += dx; this._vp.ty += dy; this._applyViewport(); }
+  resetViewport() { this._vp = { tx: 0, ty: 0, scale: 1 }; this._applyViewport(); }
+  get viewport() { return this._vp; }
 
   // place a coord in the net → CSS px relative to the SVG top-left (for overlays);
   // 'attitude' [trend,plunge] follows rotation, 'figure' [u,v] is normalised (−1..1
@@ -181,13 +206,15 @@ export class NetRenderer {
   _wirePointer() {
     const el = this._el, sn = this.sn;
     el.style.touchAction = 'none';
-    let cur = null, moved = false;
+    let cur = null, moved = false, pan = null;
     const toSvg = (e) => {
       const r = el.getBoundingClientRect();
       const k = sn.size / r.width;
       return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
+    el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
     el.addEventListener('pointermove', (e) => {
+      if (pan) { this.panBy(e.clientX - pan.x, e.clientY - pan.y); pan = { x: e.clientX, y: e.clientY }; return; }
       const p = toSvg(e);
       if (cur) {
         if (Math.hypot(p.x - cur.x, p.y - cur.y) > 1) moved = true;
@@ -208,6 +235,7 @@ export class NetRenderer {
       }
     });
     el.addEventListener('pointerdown', (e) => {
+      if (e.button === 1) { e.preventDefault(); pan = { x: e.clientX, y: e.clientY }; el.setPointerCapture?.(e.pointerId); el.style.cursor = 'grabbing'; return; }   // middle-drag → pan
       if (e.button !== 0) return;
       cur = toSvg(e); moved = false; this._downEl = e.target; this._rotKey = e.altKey;  // Alt held → temporary rotate
       el.setPointerCapture?.(e.pointerId); e.preventDefault();
@@ -215,6 +243,7 @@ export class NetRenderer {
       else if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
     el.addEventListener('pointerup', () => {
+      if (pan) { pan = null; this._syncCursor(); return; }
       const d = (cur && !moved) ? sn.unproject(cur.x, cur.y) : null;
       const wasClick = !moved, rotKey = this._rotKey;
       cur = null; this._rotKey = false;

@@ -300,6 +300,20 @@ test('vendored sideact h: multi-root + adjacent interpolations keep order (bindi
     'fragment expands in place without clobbering the following binding');
 });
 
+test('viewport: zoomAt scales (clamped), panBy translates, reset clears', () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const net = handle.net;
+  net.zoomAt(2, 100, 100);
+  assert.equal(net.viewport.scale, 2, 'zoom in scales the viewport');
+  net.panBy(15, -5);
+  assert.ok(net.viewport.tx !== 0 || net.viewport.ty !== 0, 'pan translates');
+  net.zoomAt(100, 0, 0);
+  assert.equal(net.viewport.scale, 8, 'zoom is clamped to 8×');
+  net.resetViewport();
+  assert.deepEqual([net.viewport.tx, net.viewport.ty, net.viewport.scale], [0, 0, 1], 'reset clears the viewport');
+});
+
 test('preview mode: the toggle adds/removes body.preview', async () => {
   const root = document.createElement('div');
   mountApp(root);

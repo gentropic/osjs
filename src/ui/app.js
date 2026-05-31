@@ -1156,6 +1156,7 @@ export function mountApp(root) {
     items.push({ label: 'Legend', checked: project.legendShow(), onClick: () => project.setLegendShow(!project.legendShow()) });
     items.push({ label: 'Add title', onClick: () => addTitle() });
     items.push({ label: 'Reset orientation', onClick: () => net.resetView() });
+    const vp = net.viewport; if (vp.scale !== 1 || vp.tx || vp.ty) items.push({ label: 'Reset zoom & pan', onClick: () => net.resetViewport() });
     openMenu(clientX, clientY, items);
   };
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
@@ -1403,6 +1404,7 @@ export function mountApp(root) {
       <div class="grp" title="net interaction mode">
         ${modeSeg('select', 'select')}${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
+        <button class="seg" title="fit — reset zoom & pan (scroll to zoom · middle-drag to pan)" onclick=${() => net.resetViewport()}>⤢</button>
       </div>
       <div class="grp">
         <button class=${() => (canUndo() ? 'seg' : 'seg dim')} title="undo (Ctrl+Z)" onclick=${undo}>↶</button>
