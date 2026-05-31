@@ -107,6 +107,19 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('annotations: add a note → renders on the net, inspector shows the editor', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  [...root.querySelectorAll('.sect .sectbtn')].find((b) => /annotation/i.test(b.title)).click();
+  await tick();
+  const note = project.items().at(-1);
+  assert.equal(note.type, 'annotation');
+  note.setStyle({ ...note.currentStyle(), text: 'fold axis here' });
+  await tick();
+  assert.ok([...root.querySelectorAll('.net-net text, .plotwrap text, svg text')].some((t) => /fold axis here/.test(t.textContent)), 'the label text renders in the net SVG');
+  assert.match((root.querySelector('.inspector').textContent || '').toLowerCase(), /annotation/);
+});
+
 test('undo / redo restores project state after a change', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);
@@ -236,7 +249,7 @@ test('groups: a group nests items in the tree and gates their visibility', async
   const n0 = legendCount();
   assert.ok(n0 >= 2, 'legend lists the seed datasets');
 
-  root.querySelector('.sect .sectbtn').click();   // + group
+  [...root.querySelectorAll('.sect .sectbtn')].find((b) => /group/i.test(b.title)).click();   // + group
   await tick();
   const groupRow = [...root.querySelectorAll('.grp-row')];
   assert.equal(groupRow.length, 1, 'a group row appears');

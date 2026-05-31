@@ -171,7 +171,7 @@ export function mountApp(root) {
   net.onMeasure = (m) => setMeasure(m);
   net.onPick = (d) => {
     const it = selected();
-    if (!it || isGroup(it) || it.type === 'fault') return;   // faults need rake+sense → use the form
+    if (!it || isGroup(it) || it.type === 'fault' || it.type === 'annotation') return;   // faults need rake+sense → use the form
     const lineLike = it.type === 'lines' || it.type === 'smallcircle';
     const [a, b] = lineLike ? conversions.dcosToLine(d) : conversions.dcosToPlane(d);
     const datum = it.type === 'smallcircle' ? [Math.round(a), Math.round(b), 30] : [Math.round(a), Math.round(b)];
@@ -547,6 +547,25 @@ export function mountApp(root) {
         <div class="muted">Drag layers onto a group to nest them; the group's visibility gates everything inside.</div>
       </div>`;
     }
+    if (item.type === 'annotation') {
+      const st = item.currentStyle();
+      const set = (patch) => item.setStyle({ ...item.currentStyle(), ...patch });
+      const a = [...(st.anchor || [0, 90])], setA = (k, v) => { a[k] = +v; set({ anchor: [...a] }); };
+      const l = [...(st.leader || st.anchor || [0, 90])], setL = (k, v) => { l[k] = +v; set({ leader: [...l] }); };
+      return h`<div class="pbody">
+        <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
+        <div class="ptype">annotation</div>
+        <div class="istit">text</div>
+        ${field('label', h`<input class="ni" value=${st.text || ''} oninput=${(e) => set({ text: e.target.value })}>`)}
+        ${field('color', h`<input type="color" value=${st.color || '#1d2733'} oninput=${(e) => set({ color: e.target.value })}>`)}
+        ${field('size', num(st.fontSize ?? 13, 8, 36, 1, (e) => set({ fontSize: +e.target.value })))}
+        ${field('bold', chips(chip('bold', () => !!item.style().bold, () => set({ bold: !item.currentStyle().bold }))))}
+        <div class="istit">placement</div>
+        ${field('anchor (t/p)', h`<span class="fv">${num(a[0], 0, 360, 1, (e) => setA(0, e.target.value))}${num(a[1], 0, 90, 1, (e) => setA(1, e.target.value))}</span>`)}
+        ${field('leader', chips(chip('show', () => !!item.style().leader, () => set({ leader: item.currentStyle().leader ? null : [...(item.currentStyle().anchor || [0, 90])] }))))}
+        ${field('points to', h`<span class="fv">${num(l[0], 0, 360, 1, (e) => setL(0, e.target.value))}${num(l[1], 0, 90, 1, (e) => setL(1, e.target.value))}</span>`)}
+      </div>`;
+    }
     return h`<div class="pbody">
       <input class="nameedit" value=${item.currentName()} oninput=${(e) => item.setName(e.target.value)}>
       <div class="ptype">${item.type} · ${item.measurements().length} measurements</div>
@@ -619,7 +638,7 @@ export function mountApp(root) {
     return h`<div class="lgitem"><span class="sw" style=${{ background: item.style().color || '#888' }}></span><span>${item.name()}</span></div>`;
   }
   effect(() => {
-    const vis = project.visibleLeaves();
+    const vis = project.visibleLeaves().filter((it) => it.type !== 'annotation');
     if (vis.length) legendHost.replaceChildren(h`<div class="lg">${vis.map(legendRow)}</div>`);
     else legendHost.replaceChildren();
   });
@@ -630,7 +649,7 @@ export function mountApp(root) {
   const tableHost = document.createElement('div');
   // Rebuilds on selection / edit-mode / structural change only — cell edits write
   // through to the model (read untracked here) so they don't rebuild + lose focus.
-  effect(() => { tableVer(); const it = selected(); tableHost.replaceChildren(it && !isGroup(it) ? dataTable(it, tableEdit()) : h`<div class="muted">${() => (isGroup(selected()) ? 'groups have no data table' : 'no dataset selected')}</div>`); });
+  effect(() => { tableVer(); const it = selected(); const tabular = it && !isGroup(it) && it.type !== 'annotation'; tableHost.replaceChildren(tabular ? dataTable(it, tableEdit()) : h`<div class="muted">${() => { const s = selected(); return isGroup(s) ? 'groups have no data table' : s && s.type === 'annotation' ? 'annotations have no data table' : 'no dataset selected'; }}</div>`); });
   function dataTable(item, edit) {
     const geom = item.constructor.GEOM || ['a', 'b'];
     const cols = item.currentColumns();
@@ -738,6 +757,7 @@ export function mountApp(root) {
     <div class="body">
       <aside class="side">
         <div class="sect">data <span class="count">${() => project.items().length}</span>
+          <button class="sectbtn" title="add a text annotation" onclick=${() => setSelected(project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [0, 90] } })))}>＋ note</button>
           <button class="sectbtn" title="add a group" onclick=${() => setSelected(project.addGroup('group'))}>＋ group</button></div>
         <div class="list" ondragover=${(e) => { if (dragNode) e.preventDefault(); }} ondrop=${(e) => { e.preventDefault(); if (dragNode) { project.move(dragNode, null, project.nodes().length); dragNode = null; } }}>${list}</div>
         ${addHost}

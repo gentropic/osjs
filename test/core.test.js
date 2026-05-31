@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Annotation, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
 import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
@@ -152,6 +152,24 @@ test('small circles contribute an axis point + a cone per datum (aperture as ang
   sc.toggleLayer('axes');                                    // turn axes off
   assert.equal(sc.contribute('net').filter((p) => p.kind === 'point').length, 0);
   assert.equal(SmallCircleSet.GEOM.length, 3);              // trend / plunge / aperture
+});
+
+test('annotation contributes a text label (+ optional leader) only to the net', () => {
+  const a = new Annotation({ name: 'n', style: { text: 'fold axis', anchor: [120, 30] } });
+  const net = a.contribute('net');
+  assert.equal(net.length, 1);
+  assert.equal(net[0].kind, 'text');
+  assert.equal(net[0].content, 'fold axis');
+  assert.equal(a.contribute('rose').length, 0);
+  assert.equal(a.stats(), null);
+  a.setStyle({ ...a.currentStyle(), leader: [200, 10] });
+  const withLeader = a.contribute('net');
+  assert.ok(withLeader.some((p) => p.kind === 'polyline' && p.source.leader));
+  // content round-trips (it lives in style)
+  const p = new Project(); p.add(a);
+  const q = new Project(); loadProject(q, JSON.parse(JSON.stringify(serializeProject(p))));
+  assert.equal(q.items()[0].type, 'annotation');
+  assert.equal(q.items()[0].contribute('net')[0].content, 'fold axis');
 });
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
