@@ -444,6 +444,16 @@ export function mergeItems(a, b) {
     measurements: [...a.currentMeasurements(), ...b.currentMeasurements()], style: { ...a.currentStyle() } };
 }
 
+/** Tilt-correct (unfold) an item about a reference plane's strike → new payload. */
+export function unfoldItem(item, dipDir, dip) {
+  const back = backFn(item.type);
+  const measurements = analysis.unfold(item.dcos(), dipDir, dip).map((d) => back(d).map(r1));
+  return { type: item.type, name: `${item.currentName()} (unfolded ${Math.round(dipDir)}/${Math.round(dip)})`, measurements, style: { ...item.currentStyle() } };
+}
+
+/** Watson–Williams two-sample common-mean test between two items. */
+export function commonMean(a, b) { return statistics.commonMeanTest(a.dcos(), b.dcos()); }
+
 /** All pairwise normalized difference vectors of an item → new lines payload. */
 export function differenceVectors(item) {
   const d = item.dcos(), out = [];

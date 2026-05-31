@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors } from '../src/core/model.js';
+import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
 import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
 
@@ -175,6 +175,17 @@ test('data tools: rotate / merge / difference vectors produce new payloads', () 
   const diff = differenceVectors(new LineSet({ measurements: [[0, 0], [90, 0], [45, 10]] }));
   assert.equal(diff.type, 'lines');
   assert.equal(diff.measurements.length, 3);                                  // C(3,2) pairs
+
+  // unfold the reference plane about its own strike → it becomes horizontal (dip 0)
+  const ref = [200, 40];   // dip dir / dip
+  const uf = unfoldItem(new PlaneSet({ measurements: [ref] }), ref[0], ref[1]);
+  const [, dipAfter] = uf.measurements[0];
+  assert.ok(Math.abs(dipAfter) < 0.5, `the reference plane unfolds to horizontal, got dip ${dipAfter}`);
+
+  // common-mean test returns a Watson–Williams result
+  const r = commonMean(new PoleSet({ measurements: [[120, 30], [122, 33], [118, 28]] }),
+    new PoleSet({ measurements: [[121, 31], [119, 29], [123, 32]] }));
+  assert.ok(r.p >= 0 && r.p <= 1 && Number.isFinite(r.F));
 });
 
 test('parseFaults reads dd/dip/rake/sense (letter or numeric sense)', () => {

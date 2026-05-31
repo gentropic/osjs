@@ -15,7 +15,7 @@ import { signal, effect } from '../../vendor/sideact/signals.js';
 import { h } from '../../vendor/sideact/dom.js';
 import { each } from '../../vendor/sideact/render.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup, rotateItem, mergeItems, differenceVectors } from '../core/model.js';
+import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
@@ -461,16 +461,19 @@ export function mountApp(root) {
   function toolsSection(item) {
     if (!['planes', 'poles', 'lines'].includes(item.type)) return '';   // derived ops need pair attitudes
     const rot = { t: 0, p: 90, a: 30 };                                  // axis trend/plunge, angle
+    const unf = { dd: 0, dip: 0 };                                       // unfold reference plane
     const others = project.items().filter((i) => i !== item && i.type === item.type);
-    const sel = others.length ? (() => { const s = document.createElement('select'); others.forEach((it, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = it.name(); s.appendChild(o); }); return s; })() : null;
-    const mergeCtl = sel
-      ? h`<span class="fv">${sel}<button class="mini" onclick=${() => addPayload(mergeItems(item, others[+sel.value || 0]))}>merge</button></span>`
-      : h`<span class="muted">no compatible layer</span>`;
+    const itemSelect = () => { const s = document.createElement('select'); others.forEach((it, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = it.name(); s.appendChild(o); }); return s; };
+    const mergeSel = others.length ? itemSelect() : null, cmpSel = others.length ? itemSelect() : null;
+    const mergeCtl = mergeSel ? h`<span class="fv">${mergeSel}<button class="mini" onclick=${() => addPayload(mergeItems(item, others[+mergeSel.value || 0]))}>merge</button></span>` : h`<span class="muted">no compatible layer</span>`;
+    const cmpCtl = cmpSel ? h`<span class="fv">${cmpSel}<button class="mini" onclick=${() => { const o = others[+cmpSel.value || 0]; const r = commonMean(item, o); setNotice(`common mean vs ${o.name()}: p=${r.p < 0.001 ? '<0.001' : r.p.toFixed(3)} (${r.p < 0.05 ? 'differ' : 'share'}), F=${r.F.toFixed(2)}`); }}>test</button></span>` : h`<span class="muted">no compatible layer</span>`;
     return h`<div class="psec"><div class="istit">tools</div>
       ${field('rotate axis', h`<span class="fv">${num(rot.t, 0, 360, 1, (e) => { rot.t = +e.target.value; })}${num(rot.p, 0, 90, 1, (e) => { rot.p = +e.target.value; })}</span>`)}
       ${field('by angle', h`<span class="fv">${num(rot.a, -360, 360, 1, (e) => { rot.a = +e.target.value; })}<button class="mini" onclick=${() => addPayload(rotateItem(item, rot.t, rot.p, rot.a))}>rotate →</button></span>`)}
+      ${field('unfold (dd/dip)', h`<span class="fv">${num(unf.dd, 0, 360, 1, (e) => { unf.dd = +e.target.value; })}${num(unf.dip, 0, 90, 1, (e) => { unf.dip = +e.target.value; })}<button class="mini" onclick=${() => addPayload(unfoldItem(item, unf.dd, unf.dip))}>unfold →</button></span>`)}
       ${field('difference', h`<span class="fv"><button class="mini" onclick=${() => addPayload(differenceVectors(item))}>vectors →</button></span>`)}
-      ${field('merge with', mergeCtl)}</div>`;
+      ${field('merge with', mergeCtl)}
+      ${field('common mean', cmpCtl)}</div>`;
   }
   function statsSection(item) {
     const s = item.stats();
