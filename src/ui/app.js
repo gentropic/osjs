@@ -200,7 +200,15 @@ export function mountApp(root) {
 
   net.onHover = (d) => setCursor(d);
   net.onMeasure = (m) => setMeasure(m);
-  net.onViewport = (vp) => setZoom(vp.scale);
+  let vpTimer = null;
+  net.onViewport = (vp) => {
+    setZoom(vp.scale);
+    clearTimeout(vpTimer);                                 // debounce: persist once the gesture settles (no per-frame localStorage thrash)
+    vpTimer = setTimeout(() => project.setViewport({ tx: vp.tx, ty: vp.ty, scale: vp.scale }), 250);
+  };
+  // restore a saved viewport onto the net (load / undo); silent setViewport so it
+  // doesn't echo back through onViewport
+  effect(() => { const vp = project.viewport(); if (vp) { net.setViewport(vp); setZoom(vp.scale); } });
   net.onSelect = (id) => setSelected(id ? (project.items().find((x) => x.id === id) || null) : null);  // click a layer / empty → deselect
   net.onPick = (d) => {
     const it = selected();
@@ -1373,23 +1381,6 @@ export function mountApp(root) {
     fig.addEventListener('pointermove', (e) => { if (!pan) return; net.panBy(e.clientX - pan.x, e.clientY - pan.y); pan = { x: e.clientX, y: e.clientY }; });
     fig.addEventListener('pointerup', () => { if (pan) { pan = null; fig.style.cursor = ''; } });
   }
-  // fit the active figure onto one printed page: scale the plot container to the
-  // printable width and pin it to the page origin (no reflow → overlays stay glued).
-  // Restored afterwards. The @media print rules hide everything else.
-  let printSaved = null;
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeprint', () => {
-      const wrap = wraps[activeTab()] || wraps.net;
-      const r = wrap.getBoundingClientRect(); if (!r.width) return;
-      const target = 718;                                  // ~A4 portrait printable width @96dpi
-      printSaved = { wrap, css: wrap.style.cssText };
-      wrap.style.position = 'fixed'; wrap.style.left = '0'; wrap.style.top = '0';
-      wrap.style.width = `${r.width}px`; wrap.style.height = `${r.height}px`;
-      wrap.style.transformOrigin = '0 0'; wrap.style.transform = `scale(${Math.min(1, target / r.width)})`;
-    });
-    window.addEventListener('afterprint', () => { if (printSaved) { printSaved.wrap.style.cssText = printSaved.css; printSaved = null; } });
-  }
-
   // ── composed export (net + overlay → one self-contained image) ──
   // Serialize the whole plot container (bearing's net SVG + the annotation / table /
   // legend / page overlays) into a single SVG via <foreignObject>, inlining the app
@@ -1439,6 +1430,21 @@ export function mountApp(root) {
     };
     img.onerror = () => { URL.revokeObjectURL(url); setNotice('export failed — the browser blocked rasterizing the figure'); };
     img.src = url;
+  }
+  // print the composed figure via a hidden iframe (the figure is the only thing in
+  // that document → a clean page), rather than window.print() of the whole app.
+  function printFigure() {
+    const { svg } = composeFigureSVG();
+    const ifr = document.createElement('iframe');
+    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(ifr);
+    const doc = ifr.contentDocument || ifr.contentWindow.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:10mm}html,body{margin:0;padding:0}svg{width:100%;height:auto;display:block}</style></head><body>${svg}</body></html>`);
+    doc.close();
+    const win = ifr.contentWindow;
+    win.addEventListener('afterprint', () => setTimeout(() => ifr.remove(), 300));
+    setTimeout(() => { win.focus(); win.print(); }, 80);   // let the foreignObject lay out first
   }
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
@@ -1538,7 +1544,7 @@ export function mountApp(root) {
       <div class="grp">
         <button class="seg" title="export the composed figure (net + annotations + tables + legend) as SVG" onclick=${exportSVG}>SVG</button>
         <button class="seg" title="export the composed figure as PNG at the figure DPI" onclick=${exportPNG}>PNG</button>
-        <button class="seg" title="print / save as PDF (camera-ready figure)" onclick=${() => { requestAnimationFrame(() => { window.print(); }); }}>print</button>
+        <button class="seg" title="print / save as PDF (the composed figure)" onclick=${printFigure}>print</button>
       </div>
       <button class="btn icon" title="toggle theme" onclick=${() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>${() => (theme() === 'dark' ? '☀' : '☾')}</button>
     </header>

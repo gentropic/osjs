@@ -415,6 +415,7 @@ export class Project {
     mk('pageAspect', '1:1');          // '1:1' | '4:3' | '3:4' | '16:9' | 'a4-landscape' | 'a4-portrait'
     mk('figureBg', 'paper');          // 'paper' (white) | 'transparent' | 'theme'
     mk('exportDpi', 150);             // raster export resolution (PNG scale = dpi/96)
+    mk('viewport', null);             // net pan/zoom view state {tx,ty,scale} — persisted like a GIS map view
   }
 
   get roseSettings() { return { binWidth: this.roseBinWidth(), scale: this.roseScale(), petal: this.rosePetalStyle(), mean: this.roseMean() }; }
@@ -531,6 +532,7 @@ export function serializeProject(project) {
     pageAspect: project.pageAspect(),
     figureBg: project.figureBg(),
     exportDpi: project.exportDpi(),
+    viewport: project.viewport(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -560,6 +562,7 @@ export function loadProject(project, data) {
   if (data.pageAspect) project.setPageAspect(data.pageAspect);
   if (data.figureBg) project.setFigureBg(data.figureBg);
   if (data.exportDpi) project.setExportDpi(data.exportDpi);
+  project.setViewport(data.viewport || null);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;

@@ -84,7 +84,7 @@ export class NetRenderer {
     this.sn = next;
     this._el = el;
     this._wirePointer();
-    this._applyViewport();
+    this._applyViewport(true);     // re-apply across rebuilds, silently
   }
 
   // numeric view: bring a trend/plunge to the centre, or reset to default
@@ -95,19 +95,25 @@ export class NetRenderer {
   // Overlay positioning is rect-based, so transforming the SVG and re-running the
   // overlay reposition (onAfterRender) keeps everything aligned — no projection or
   // bearing change. transform-origin 0 0 keeps the zoom-to-cursor math simple.
-  _applyViewport() {
+  _applyViewport(silent) {
     const v = this._vp;
     if (this._el) {
       this._el.style.transformOrigin = '0 0';
       this._el.style.transform = (v.tx || v.ty || v.scale !== 1) ? `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})` : '';
     }
     this.onAfterRender?.();
-    this.onViewport?.(v);
+    if (!silent) this.onViewport?.(v);            // silent = programmatic (e.g. restore) → don't echo back
   }
   // set an absolute zoom level, keeping a focal point fixed (defaults to net centre)
   setZoom(scale, clientX, clientY) {
     const r = this._el.getBoundingClientRect();
     this.zoomAt(scale / this._vp.scale, clientX ?? (r.left + r.width / 2), clientY ?? (r.top + r.height / 2));
+  }
+  // restore a saved viewport without echoing through onViewport (avoids a write-back loop)
+  setViewport(vp) {
+    if (!vp) return;
+    this._vp = { tx: vp.tx || 0, ty: vp.ty || 0, scale: Math.max(0.1, Math.min(8, vp.scale || 1)) };
+    this._applyViewport(true);
   }
   zoomAt(mult, clientX, clientY) {
     const r = this._el.getBoundingClientRect();
