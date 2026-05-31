@@ -1240,6 +1240,38 @@ export function mountApp(root) {
     const vp = net.viewport; if (vp.scale !== 1 || vp.tx || vp.ty) items.push({ label: 'Reset zoom & pan', onClick: () => net.resetViewport() });
     openMenu(clientX, clientY, items);
   };
+  // ── annotation scene (declarative primitives for export) ──
+  // The export consumes these instead of scraping the rendered anno DOM. Geometry
+  // comes from the model + net.place (the same inputs the DOM uses); text is sized
+  // with a canvas measurer so the box + leader-edge attach match without a reflow.
+  // Coordinates are net-relative; the export translates by the net's offset.
+  const _measCtx = (typeof document !== 'undefined' && document.createElement('canvas').getContext) ? document.createElement('canvas').getContext('2d') : null;
+  function measureLabelW(str, fontSize, bold, family) {
+    if (_measCtx) { _measCtx.font = `${bold ? 700 : 400} ${fontSize}px ${family || 'sans-serif'}`; return _measCtx.measureText(str).width; }
+    return String(str).length * fontSize * 0.55;            // headless fallback (jsdom): rough estimate
+  }
+  function annoScene() {
+    const cs = getComputedStyle(document.body), fam = cs.fontFamily || 'sans-serif', stroke2 = (cs.getPropertyValue('--line-2') || '#c4ccd6').trim();
+    const prims = [];
+    for (const a of visibleAnnos()) {
+      const st = a.style();
+      const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
+      const fs = st.fontSize || 13, bold = st.bold ? 700 : 400, col = st.color || '#1d2733', txt = st.text || 'note';
+      const tw = measureLabelW(txt, fs, st.bold, fam), th = fs * 1.1;
+      const bw = tw + 6, bh = th + 2, half = [bw / 2 + 2, bh / 2 + 2];   // padding 1px 3px (see .anno-label)
+      const dim = anchor.hidden ? 0.4 : 1;
+      if (st.leader) {                                       // leader line (+ optional arrow), attached at the label edge
+        const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]);
+        const dx = t.x - anchor.x, dy = t.y - anchor.y, s = Math.min(1, 1 / Math.max(Math.abs(dx) / half[0], Math.abs(dy) / half[1], 1e-6));
+        const ex = anchor.x + dx * s, ey = anchor.y + dy * s;
+        prims.push({ t: 'line', x1: t.x, y1: t.y, x2: ex, y2: ey, stroke: col, sw: 1, opacity: dim });
+        if (st.leaderArrow) { const len = Math.hypot(t.x - ex, t.y - ey) || 1, ux = (t.x - ex) / len, uy = (t.y - ey) / len, bx = t.x - ux * 8, by = t.y - uy * 8, nx = -uy * 4, ny = ux * 4; prims.push({ t: 'polyline', pts: [[t.x, t.y], [bx + nx, by + ny], [bx - nx, by - ny], [t.x, t.y]], fill: col, stroke: col, sw: 1, opacity: dim }); }
+      }
+      if (st.box) prims.push({ t: 'rect', x: anchor.x - bw / 2, y: anchor.y - bh / 2, w: bw, h: bh, rx: 3, fill: st.bgColor || '#ffffff', stroke: stroke2, sw: 1, opacity: dim });
+      prims.push({ t: 'text', x: anchor.x, y: anchor.y, text: txt, size: fs, weight: bold, family: fam, fill: col, anchor: 'middle', baseline: 'central', opacity: dim });
+    }
+    return prims;
+  }
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
   function renderAnnos() {
@@ -1428,7 +1460,7 @@ export function mountApp(root) {
     fig.addEventListener('pointerup', () => { if (pan) { pan = null; fig.style.cursor = ''; } });
   }
   // composed export pipeline (the @gcu/compo seed — see render/figure-export.js)
-  const { nativeFigure, composeFigureSVG, exportSVG, exportPNG, printFigure } = createExport({ net, project, getWrap: () => wraps[activeTab()] || wraps.net, pageFrame, notify: setNotice });
+  const { nativeFigure, composeFigureSVG, exportSVG, exportPNG, printFigure } = createExport({ net, project, getWrap: () => wraps[activeTab()] || wraps.net, pageFrame, scene: () => (activeTab() === 'net' ? annoScene() : []), notify: setNotice });
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──

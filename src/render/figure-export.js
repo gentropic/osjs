@@ -14,15 +14,19 @@
  *   createExport({ net, project, getWrap, pageFrame, notify })
  */
 
+import { primsToMarkup } from './scene.js';
+
 const SVGNS = 'http://www.w3.org/2000/svg';
 const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const n2 = (v) => Math.round(v * 100) / 100;
 // transient UI (brush / selection) + interactive chrome are kept out of exports;
 // .floatpanel is handled specially (clean caption + grid) by emitPanel.
-const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.brushlayer,.sellayer,.gutter,.pageframe,.floatpanel';
+// .annolayer is emitted from the declarative scene (createExport's `scene` dep),
+// not scraped — so skip the live anno DOM in the walk.
+const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.brushlayer,.sellayer,.gutter,.pageframe,.floatpanel,.annolayer';
 const EXPORT_VARS = ['--bg', '--panel', '--panel-2', '--raised', '--line', '--line-2', '--ink', '--ink-dim', '--ink-faint', '--amber', '--accent-text', '--cyan', '--cyan-text', '--on-accent', '--canvas-bg', '--canvas-grid', '--vignette', '--ui', '--mono'];
 
-export function createExport({ net, project, getWrap, pageFrame, notify = () => {} }) {
+export function createExport({ net, project, getWrap, pageFrame, scene = () => [], notify = () => {} }) {
   // ── foreignObject path (exact browser render; used by print) ──
   const exportVars = () => { const cs = getComputedStyle(document.body); return EXPORT_VARS.map((n) => `${n}:${cs.getPropertyValue(n)}`).join(';'); };
   function composeFigureSVG() {
@@ -116,6 +120,10 @@ export function createExport({ net, project, getWrap, pageFrame, notify = () => 
       out.push(`<clipPath id="${cid}"><rect x="${n2(sv.left - wr.left)}" y="${n2(sv.top - wr.top)}" width="${n2(sv.width)}" height="${n2(sv.height)}"/></clipPath><g clip-path="url(#${cid})">${cells}</g>`);
     };
     for (const child of wrap.children) walk(child);
+    // declarative composition layers (annotations/title) — net-relative, so
+    // translate by the net's offset within the wrap (same as the live overlays)
+    const sc = scene() || [];
+    if (sc.length) { const nr = net.element.getBoundingClientRect(); out.push(`<g transform="translate(${n2(nr.left - wr.left)} ${n2(nr.top - wr.top)})">${primsToMarkup(sc)}</g>`); }
     for (const panel of wrap.querySelectorAll('.floatpanel')) emitPanel(panel);
     let cx = 0, cy = 0, cw = W, ch = H;
     if (project.pageShow()) { const fr = pageFrame.getBoundingClientRect(); cx = fr.left - wr.left; cy = fr.top - wr.top; cw = Math.max(1, Math.round(fr.width)); ch = Math.max(1, Math.round(fr.height)); }

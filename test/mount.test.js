@@ -10,7 +10,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
-let mountApp;
+let mountApp, ITEM_TYPES;
 
 before(async () => {
   const dom = new JSDOM('<!doctype html><html><head></head><body><div id="osjs"></div></body></html>', { pretendToBeVisual: true });
@@ -22,6 +22,7 @@ before(async () => {
   globalThis.XMLSerializer = dom.window.XMLSerializer;
   globalThis.getComputedStyle = dom.window.getComputedStyle;
   ({ mountApp } = await import('../src/ui/app.js'));
+  ({ ITEM_TYPES } = await import('../src/core/model.js'));
 });
 
 const text = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
@@ -329,6 +330,20 @@ test('composed export: builds a self-contained SVG with the overlay baked in', a
   const nat = handle.nativeFigure();
   assert.match(nat.svg, /^<svg[\s>]/, 'native is an SVG');
   assert.ok(!/foreignObject/.test(nat.svg), 'native export uses no foreignObject');
+});
+
+test('export: annotations come from the declarative scene (centered <text>), not a DOM scrape', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  handle.project.add(new ITEM_TYPES.annotation({ name: 'note', style: { text: 'HELLO', color: '#1d2733', fontSize: 20, bold: true, anchor: [0, 0], anchorSpace: 'figure' } }));
+  await tick();
+  const { svg } = handle.nativeFigure();
+  // scene emits the label as a middle-anchored primitive; the old DOM walk read
+  // .anno-label's default (left) text-align, so a centered HELLO proves the path
+  const m = svg.match(/<text[^>]*>HELLO<\/text>/);
+  assert.ok(m, 'anno text present in the export');
+  assert.match(m[0], /text-anchor="middle"/, 'centered (scene path, not the left-aligned DOM scrape)');
+  assert.match(m[0], /font-weight="700"/, 'bold carried from the model');
 });
 
 test('footer zoom control: reflects the viewport and the % resets to 100%', async () => {
