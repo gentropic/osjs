@@ -998,6 +998,71 @@ export function mountApp(root) {
       { label: 'Remove group + children', danger: true, onClick: () => { project.remove(group); reselectAfterRemove(group); } },
     ];
   }
+  // copy the clicked direction in a chosen representation (shared attitude formatter)
+  function copyAttitudeMenu(dcos) {
+    const [t, p] = conversions.dcosToLine(dcos), [dd, dip] = conversions.dcosToPlane(dcos);
+    return [
+      { label: `Line  ${az(t)}/${p2(p)}`, onClick: () => copyText(`${Math.round(t)}/${Math.round(p)}`) },
+      { label: `Plane  ${az(dd)}/${p2(dip)}`, onClick: () => copyText(`${Math.round(dd)}/${Math.round(dip)}`) },
+      { label: `Strike/dip  ${az((dd + 270) % 360)}/${p2(dip)}`, onClick: () => copyText(`${Math.round((dd + 270) % 360)}/${Math.round(dip)}`) },
+      { label: 'Direction cosines', onClick: () => copyText(`[${dcos.map((v) => v.toFixed(4)).join(', ')}]`) },
+    ];
+  }
+  // convert an annotation endpoint between attitude/figure space, keeping it put
+  function setAnnoSpace(a, key, coordKey, v) {
+    const cs = a.currentStyle(), old = cs[key] || 'attitude', cur = cs[coordKey];
+    if (old !== v && cur) { const pt = net.place(old, cur[0], cur[1]); const nc = net.locate(v, pt.x, pt.y); a.setStyle({ ...cs, [key]: v, ...(nc ? { [coordKey]: nc } : {}) }); }
+    else a.setStyle({ ...cs, [key]: v });
+  }
+  const setAnno = (a, patch) => a.setStyle({ ...a.currentStyle(), ...patch });
+  function annoMenu(a) {
+    const st = a.currentStyle();
+    return [
+      { label: 'Edit text…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Annotation text', st.text || '') : null; if (t != null) setAnno(a, { text: t }); } },
+      { label: 'Bold', checked: !!st.bold, onClick: () => setAnno(a, { bold: !a.currentStyle().bold }) },
+      { label: 'Background box', checked: !!st.box, onClick: () => setAnno(a, { box: !a.currentStyle().box }) },
+      { separator: true },
+      { label: 'Anchor space', submenu: [
+        { label: 'attitude (follows rotation)', checked: (st.anchorSpace || 'attitude') === 'attitude', onClick: () => setAnnoSpace(a, 'anchorSpace', 'anchor', 'attitude') },
+        { label: 'figure (fixed on the page)', checked: st.anchorSpace === 'figure', onClick: () => setAnnoSpace(a, 'anchorSpace', 'anchor', 'figure') },
+      ] },
+      { label: 'Lock anchor', checked: !!st.anchorLock, onClick: () => setAnno(a, { anchorLock: !a.currentStyle().anchorLock }) },
+      { separator: true },
+      { label: st.leader ? 'Hide leader' : 'Show leader', onClick: () => setAnno(a, { leader: st.leader ? null : [...(st.anchor || [0, 90])] }) },
+      st.leader && { label: 'Leader space', submenu: [
+        { label: 'attitude', checked: (st.leaderSpace || 'attitude') === 'attitude', onClick: () => setAnnoSpace(a, 'leaderSpace', 'leader', 'attitude') },
+        { label: 'figure', checked: st.leaderSpace === 'figure', onClick: () => setAnnoSpace(a, 'leaderSpace', 'leader', 'figure') },
+      ] },
+      st.leader && { label: 'Arrowhead', checked: !!st.leaderArrow, onClick: () => setAnno(a, { leaderArrow: !a.currentStyle().leaderArrow }) },
+      st.leader && { label: 'Lock leader', checked: !!st.leaderLock, onClick: () => setAnno(a, { leaderLock: !a.currentStyle().leaderLock }) },
+      { separator: true },
+      { label: 'Duplicate', onClick: () => duplicateItem(a) },
+      { label: 'Remove', danger: true, onClick: () => { project.remove(a); reselectAfterRemove(a); } },
+    ];
+  }
+  // measure every column to max-content and lock those widths
+  function autofitAll(item) {
+    const dt = root.querySelector(`.dtable[data-item="${item.id}"]`); if (!dt) return;
+    const n = (item.constructor.GEOM || []).length + item.currentColumns().length;
+    dt.style.gridTemplateColumns = `44px ${Array.from({ length: n }, () => 'max-content').join(' ')}${isEditing(item.id) ? ' 34px' : ''}`;
+    const w = []; for (let i = 0; i < n; i++) { const th = dt.querySelector(`.th[data-col="${i}"]`); w[i] = th ? Math.max(40, Math.ceil(th.getBoundingClientRect().width) + 2) : 80; }
+    item.setParams({ tableColW: w }); bumpTable();
+  }
+  function panelMenu(item) {
+    const pr = item.currentParams();
+    return [
+      { label: pr.tableMin ? 'Expand' : 'Minimise', onClick: () => { item.setParams({ tableMin: !pr.tableMin }); bumpTable(); } },
+      { label: isEditing(item.id) ? 'Stop editing' : 'Edit cells', onClick: () => toggleEditing(item.id) },
+      { label: 'Auto-fit all columns', onClick: () => autofitAll(item) },
+      { label: 'Reset column widths', onClick: () => { item.setParams({ tableColW: undefined }); bumpTable(); } },
+      { label: 'Reset size & position', onClick: () => { item.setParams({ tablePos: undefined, tableW: undefined, tableH: undefined, tableMin: false }); bumpTable(); } },
+      { separator: true },
+      { label: 'Select layer', onClick: () => setSelected(item) },
+      { label: 'Open in table tab', onClick: () => { setSelected(item); setActiveTab('table'); } },
+      { separator: true },
+      { label: 'Close table', danger: true, onClick: () => { item.setParams({ tableOpen: false }); bumpTable(); } },
+    ];
+  }
   net.onContextMenu = ({ clientX, clientY, dcos, id }) => {
     const item = id ? project.items().find((x) => x.id === id) : null;
     const items = [];
@@ -1008,13 +1073,10 @@ export function mountApp(root) {
       items.push({ separator: true });
     }
     if (dcos) {
-      const [t, p] = conversions.dcosToLine(dcos), [dd, dip] = conversions.dcosToPlane(dcos);
-      items.push({ label: `Copy line  ${az(t)}/${p2(p)}`, onClick: () => copyText(`${Math.round(t)}/${Math.round(p)}`) });
-      items.push({ label: `Copy plane  ${az(dd)}/${p2(dip)}`, onClick: () => copyText(`${Math.round(dd)}/${Math.round(dip)}`) });
-      items.push({ label: `Copy strike/dip  ${az((dd + 270) % 360)}/${p2(dip)}`, onClick: () => copyText(`${Math.round((dd + 270) % 360)}/${Math.round(dip)}`) });
-      items.push({ label: 'Copy direction cosines', onClick: () => copyText(`[${dcos.map((v) => v.toFixed(4)).join(', ')}]`) });
-      items.push({ separator: true });
+      const [t, p] = conversions.dcosToLine(dcos);
+      items.push({ label: 'Copy attitude as', submenu: copyAttitudeMenu(dcos) });
       items.push({ label: 'Add annotation here', onClick: () => addAnnotationAt(t, p) });
+      items.push({ separator: true });
     }
     items.push({ label: 'Reset orientation', onClick: () => net.resetView() });
     openMenu(clientX, clientY, items);
@@ -1036,6 +1098,7 @@ export function mountApp(root) {
       if (st.box) { el.classList.add('box'); el.style.background = st.bgColor || '#ffffff'; }
       el.textContent = st.text || 'note';
       el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      el.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); setSelected(a); openMenu(ev.clientX, ev.clientY, annoMenu(a)); };
       el.addEventListener('pointerdown', (ev) => dragPoint(ev, a, el, 'anchor'));
       return { a, st, el };
     });
@@ -1054,6 +1117,7 @@ export function mountApp(root) {
       hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}${selected() === a ? ' sel' : ''}`;
       hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
       hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      hd.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); setSelected(a); openMenu(ev.clientX, ev.clientY, annoMenu(a)); };
       hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
       handles.push(hd);
     }
@@ -1135,6 +1199,7 @@ export function mountApp(root) {
     panel.className = `floatpanel${min ? ' min' : ''}`;                 // .sel maintained by a separate effect (no rebuild on select)
     panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`; panel.style.width = `${pr.tableW || 300}px`;
     panel.addEventListener('pointerdown', () => setSelected(item));     // click anywhere → select this layer
+    panel.addEventListener('contextmenu', (e) => { if (e.target.closest('input')) return; e.preventDefault(); e.stopPropagation(); setSelected(item); openMenu(e.clientX, e.clientY, panelMenu(item)); });
     const bar = h`<div class="fp-bar">
       <span class="fp-title">${item.currentName()}</span>
       <span class="fp-actions">

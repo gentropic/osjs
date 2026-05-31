@@ -142,13 +142,18 @@
     .fp-resize::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px;
                         border-right: 2px solid var(--ink-faint); border-bottom: 2px solid var(--ink-faint); }
     /* context menu */
-    .ctxmenu { position: fixed; z-index: 1000; min-width: 184px; padding: 4px; display: flex; flex-direction: column;
+    .ctxmenu { position: fixed; z-index: 1000; min-width: 188px; padding: 4px; display: flex; flex-direction: column;
                background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px; box-shadow: 0 8px 28px rgba(40,55,75,.22); font-size: 12px; }
-    .ctx-item { text-align: left; padding: 6px 10px; border-radius: 4px; color: var(--ink); background: none; border: 0; cursor: pointer; white-space: nowrap; }
+    .ctx-item { display: flex; align-items: center; gap: 7px; text-align: left; padding: 6px 10px; border-radius: 4px;
+                color: var(--ink); background: none; border: 0; cursor: pointer; white-space: nowrap; }
     .ctx-item:hover:not(:disabled) { background: var(--cyan); color: var(--on-accent); }
     .ctx-item:disabled { color: var(--ink-faint); cursor: default; }
     .ctx-item.danger { color: #c0445f; }
     .ctx-item.danger:hover { background: #c0445f; color: #fff; }
+    .ctx-check { flex: 0 0 auto; width: 12px; font-size: 11px; color: var(--cyan-text); }
+    .has-toggles .ctx-label, .ctx-label { flex: 1 1 auto; }
+    .ctx-arrow { flex: 0 0 auto; font-size: 10px; color: var(--ink-faint); }
+    .ctx-item:hover .ctx-check, .ctx-item:hover .ctx-arrow { color: inherit; }
     .ctx-sep { height: 1px; margin: 4px 6px; background: var(--line); }
     /* data table tab */
     .tablewrap { align-items: stretch; justify-content: flex-start; padding: 14px; }

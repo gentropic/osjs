@@ -282,12 +282,33 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   handle.net.onContextMenu({ clientX: 5, clientY: 5, dcos: [0, 1, 0], id: null });   // N horizontal
   await tick();
   const menu = document.querySelector('.ctxmenu');
-  assert.ok([...menu.querySelectorAll('.ctx-item')].some((b) => /copy line/i.test(b.textContent)), 'copy-attitude present');
+  assert.ok([...menu.querySelectorAll('.ctx-item')].some((b) => /copy attitude/i.test(b.textContent)), 'copy-attitude submenu present');
   const n0 = handle.project.items().length;
   [...menu.querySelectorAll('.ctx-item')].find((b) => /add annotation/i.test(b.textContent)).click();
   await tick();
   assert.equal(handle.project.items().length, n0 + 1, 'add annotation here creates a note');
   assert.equal(handle.project.items().at(-1).type, 'annotation');
+});
+
+test('context menu component: checkmarks render, submenu opens on hover, action closes all', async () => {
+  const { openMenu, closeMenu } = await import('../src/ui/contextmenu.js');
+  let fired = false;
+  openMenu(10, 10, [
+    { label: 'Toggle', checked: true, onClick: () => {} },
+    { label: 'More', submenu: [{ label: 'Deep', onClick: () => { fired = true; } }] },
+  ]);
+  const menu = document.querySelector('.ctxmenu');
+  assert.ok(menu.classList.contains('has-toggles'), 'toggle gutter reserved');
+  assert.equal(menu.querySelector('.ctx-check').textContent, '✓', 'checked item shows a ✓');
+  [...menu.querySelectorAll('.ctx-item')].find((b) => /more/i.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('mouseenter'));
+  await tick();
+  assert.equal(document.querySelectorAll('.ctxmenu').length, 2, 'submenu opened alongside root');
+  [...document.querySelectorAll('.ctx-item')].find((b) => /deep/i.test(b.textContent)).click();
+  await tick();
+  assert.ok(fired, 'submenu action fired');
+  assert.equal(document.querySelectorAll('.ctxmenu').length, 0, 'all menus closed after an action');
+  closeMenu();
 });
 
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
