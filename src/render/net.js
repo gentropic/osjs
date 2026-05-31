@@ -117,6 +117,7 @@ export class NetRenderer {
       case 'point': { const [t, pl] = conversions.dcosToLine(p.dir); sn.line(t, pl, pointStyle(st, item)); break; }
       case 'greatCircle': { const [dd, dip] = conversions.dcosToPlane(p.pole); sn.plane(dd, dip, lineStyle(st, item)); break; }
       case 'smallCircle': { const [t, pl] = conversions.dcosToLine(p.axis); sn.cone(t, pl, p.angle, { ...lineStyle(st, item), fill: 'none', 'stroke-dasharray': '5 4' }); break; }
+      case 'polyline': sn.curve(p.points, { stroke: st.color || st.stroke || '#000', strokeWidth: st.width || 1.5, class: cls(st, item) }); break;
       case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
       case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts }); break;
       case 'heatmap': {

@@ -186,7 +186,9 @@ test('faults: planes + slickenlines + P/T axes; paleostress gated to layer + ≥
   const f = new FaultSet({ measurements: [[120, 60, 80, 2], [300, 45, 30, 1], [90, 70, 90, 2], [200, 55, 60, 1]] });
   const base = f.contribute('net');
   assert.equal(base.filter((p) => p.kind === 'greatCircle').length, 4);   // fault planes
-  assert.equal(base.filter((p) => p.source.slip).length, 4);              // slickenlines
+  const slip = base.filter((p) => p.source.slip);
+  assert.equal(slip.length, 8);                                           // shaft + arrowhead per fault
+  assert.ok(slip.every((p) => p.kind === 'polyline'));
   assert.ok(!base.some((p) => p.source.stress != null), 'paleostress off by default');
 
   f.toggleLayer('pt');

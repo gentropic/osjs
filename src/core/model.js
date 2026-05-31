@@ -16,7 +16,7 @@
 
 import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
-import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
+import { point, polyline, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
 const { conversions, statistics, color, fault, vec3, analysis } = bearing;
 const { meanVector, principalAxes, fisherStats } = statistics;
@@ -290,7 +290,19 @@ export class FaultSet extends DataItem {
   _geometry(out, L, dStyle, src) {
     const F = this._faults(), st = this.style();
     if (L.planes) F.forEach((f, i) => out.push(greatCircle(f.normal, dStyle(i), src(i))));
-    if (L.slip) F.forEach((f, i) => out.push(point(f.slip, dStyle(i), { item: this.id, datum: i, slip: true })));
+    // slip arrow: a short segment at the fault-plane pole, ±δ along the slip line,
+    // head at cos δ·n − sin δ·s (OpenStereo convention), with a small arrowhead.
+    if (L.slip) F.forEach((f, i) => {
+      const n = f.normal[2] > 0 ? vec3.negate(f.normal) : f.normal, s = f.slip;
+      const d = 9 * Math.PI / 180, c = Math.cos(d), e = Math.sin(d);
+      const tail = vec3.normalize(vec3.add(vec3.scale(n, c), vec3.scale(s, e)));
+      const head = vec3.normalize(vec3.sub(vec3.scale(n, c), vec3.scale(s, e)));
+      out.push(polyline([tail, head], dStyle(i), { item: this.id, datum: i, slip: true }));
+      const perp = vec3.normalize(vec3.cross(n, s)), back = vec3.normalize(vec3.sub(tail, head));
+      const b1 = vec3.normalize(vec3.add(head, vec3.add(vec3.scale(back, 0.5 * e), vec3.scale(perp, 0.32 * e))));
+      const b2 = vec3.normalize(vec3.add(head, vec3.sub(vec3.scale(back, 0.5 * e), vec3.scale(perp, 0.32 * e))));
+      out.push(polyline([b1, head, b2], dStyle(i), { item: this.id, datum: i, slip: true }));
+    });
     if (L.pt) F.forEach((f, i) => {
       out.push(point(f.p, { ...st, pointFill: 'filled', size: 4 }, { item: this.id, datum: i, axis: 'P' }));
       out.push(point(f.t, { ...st, pointFill: 'open', size: 4 }, { item: this.id, datum: i, axis: 'T' }));
