@@ -1421,7 +1421,7 @@ export function mountApp(root) {
   const SVGNS = 'http://www.w3.org/2000/svg';
   const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n2 = (v) => Math.round(v * 100) / 100;
-  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter,.pageframe';   // page frame: the crop IS the page; buttons skipped by tag
+  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter,.pageframe,.floatpanel';   // floatpanel handled cleanly by emitPanel; page frame = crop edge; buttons by tag
   // best-effort font embedding: fetch the Google-Fonts CSS + woff2 and inline them
   // as data-URIs so exported SVGs are self-contained. Cached; falls back silently
   // (offline / CORS) to family-name references (the viewer substitutes).
@@ -1478,7 +1478,25 @@ export function mountApp(root) {
       emitText(el, cs, r);
       for (const c of el.children) walk(c);
     };
+    // floating tables: render clean (caption + bordered grid, clipped to what's
+    // shown), NOT the UI chrome (title bar, row/col toolbar) — handled separately
+    // so the generic walker skips .floatpanel.
+    let clipN = 0;
+    const emitPanel = (panel) => {
+      const dt = panel.querySelector('.dtable'); if (!dt) return;
+      const scroll = panel.querySelector('.tscroll') || dt, sv = scroll.getBoundingClientRect();
+      if (!sv.width) return;
+      const titEl = panel.querySelector('.fp-title'), tt = titEl ? titEl.textContent.trim() : '';
+      if (tt) { const tcs = getComputedStyle(titEl); out.push(`<text x="${n2(sv.left - wr.left)}" y="${n2(sv.top - wr.top - 7)}" font-family="${xesc(tcs.fontFamily)}" font-size="13" font-weight="700" fill="${tcs.color}">${xesc(tt)}</text>`); }
+      const scs = getComputedStyle(scroll);
+      out.push(`<rect x="${n2(sv.left - wr.left)}" y="${n2(sv.top - wr.top)}" width="${n2(sv.width)}" height="${n2(sv.height)}" fill="${scs.backgroundColor}" stroke="${scs.borderTopColor}" stroke-width="1"/>`);
+      const start = out.length;
+      for (const cell of dt.children) { const r = cell.getBoundingClientRect(); if (r.bottom <= sv.top + 1 || r.top >= sv.bottom - 1) continue; walk(cell); }
+      const cells = out.splice(start).join(''); const cid = `tclip${clipN++}`;
+      out.push(`<clipPath id="${cid}"><rect x="${n2(sv.left - wr.left)}" y="${n2(sv.top - wr.top)}" width="${n2(sv.width)}" height="${n2(sv.height)}"/></clipPath><g clip-path="url(#${cid})">${cells}</g>`);
+    };
     for (const child of wrap.children) walk(child);
+    for (const panel of wrap.querySelectorAll('.floatpanel')) emitPanel(panel);
     let cx = 0, cy = 0, cw = W, ch = H;
     if (project.pageShow()) { const fr = pageFrame.getBoundingClientRect(); cx = fr.left - wr.left; cy = fr.top - wr.top; cw = Math.max(1, Math.round(fr.width)); ch = Math.max(1, Math.round(fr.height)); }
     const bg = project.figureBg() === 'transparent' ? '' : `<rect x="${n2(cx)}" y="${n2(cy)}" width="${cw}" height="${ch}" fill="#ffffff"/>`;
