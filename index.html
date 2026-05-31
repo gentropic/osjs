@@ -108,11 +108,13 @@
     .anno-label.under { opacity: .4; }   /* anchor on the hidden hemisphere */
     .anno-label.box { border: 1px solid var(--line-2); box-shadow: 0 1px 3px rgba(40,55,75,.12); }
     .anno-label.locked { cursor: default; }
-    /* generous invisible hit target; the visible dot is drawn by ::after */
+    /* generous invisible hit target; the visible dot (::after) reveals on hover / when selected */
     .anno-handle { position: absolute; transform: translate(-50%, -50%); width: 20px; height: 20px; pointer-events: auto; cursor: move; z-index: 2; }
     .anno-handle::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-                          width: 9px; height: 9px; border-radius: 50%; background: var(--panel-2); border: 1.5px solid var(--cyan); }
-    .anno-handle:hover::after { width: 11px; height: 11px; }
+                          width: 9px; height: 9px; border-radius: 50%; background: var(--panel-2); border: 1.5px solid var(--cyan);
+                          opacity: 0; transition: opacity .12s, width .12s, height .12s; }
+    .anno-handle.sel::after { opacity: 1; }
+    .anno-handle:hover::after { opacity: 1; width: 12px; height: 12px; }
     .anno-handle.locked { cursor: default; }
     .anno-handle.locked::after { border-color: var(--ink-faint); }
     /* data table tab */

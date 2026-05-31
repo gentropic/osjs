@@ -882,21 +882,21 @@ export function mountApp(root) {
       const ex = anchor.x + dx * s, ey = anchor.y + dy * s;            // attach at the label edge
       lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${ex}" y2="${ey}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);
       if (st.leaderArrow) lines.push(`<path data-arrow="${a.id}" d="${arrowD(t.x, t.y, ex, ey)}" fill="${st.color || '#1d2733'}"/>`);
-      if (selected() === a) {                              // edit handle only on the selected annotation
-        const hd = document.createElement('div');
-        hd.dataset.annoHandle = a.id;
-        hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}`;
-        hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
-        hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
-        hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
-        handles.push(hd);
-      }
+      // handle is always present (grabbable 20px target) but its dot only shows on
+      // hover or when the annotation is selected (see .anno-handle CSS)
+      const hd = document.createElement('div');
+      hd.dataset.annoHandle = a.id;
+      hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}${selected() === a ? ' sel' : ''}`;
+      hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
+      hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
+      handles.push(hd);
     }
     annoLeaders.innerHTML = lines.join('');
     annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el), ...handles);
   }
   net.onAfterRender = renderAnnos;
-  effect(() => { project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // rebuild on add/edit/remove
+  effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // rebuild on add/edit/select/remove
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(renderAnnos).observe(annoLayer.parentElement || document.body);
 
   const wraps = {
