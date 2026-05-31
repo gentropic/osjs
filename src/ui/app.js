@@ -74,6 +74,7 @@ export function mountApp(root) {
   const [selected, setSelected] = signal(project.items()[0] || null);
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
+  const [preview, setPreview] = signal(false);   // presentation mode: hide interactive chrome → camera-ready figure
   const [mode, setMode] = signal('select');   // net interaction: select | measure | rotate | pick
   const [measure, setMeasure] = signal(null);   // last two-click measurement
   const [cursor, setCursor] = signal(null);
@@ -209,6 +210,7 @@ export function mountApp(root) {
   };
   effect(() => net.setMode(mode()));
   effect(() => document.body.classList.toggle('theme-dark', theme() === 'dark'));
+  effect(() => document.body.classList.toggle('preview', preview()));   // ResizeObserver on the plotwrap reflows overlays as the rails hide
 
   // ── data tree (nestable groups + data items, HTML5 drag-drop) ──
   const checkbox = (checked, onToggle, stop) => {
@@ -1413,7 +1415,9 @@ export function mountApp(root) {
       <div class="grp">
         <button class="seg" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
         <button class="seg" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: 2, background: '#ffffff' })}>PNG</button>
+        <button class="seg" title="print / save as PDF (camera-ready figure)" onclick=${() => { setPreview(true); requestAnimationFrame(() => { window.print(); }); }}>print</button>
       </div>
+      <button class=${() => (preview() ? 'btn icon on' : 'btn icon')} title="preview — hide editing chrome for a camera-ready figure" onclick=${() => setPreview((v) => !v)}>${() => (preview() ? '◉' : '○')}</button>
       <button class="btn icon" title="toggle theme" onclick=${() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>${() => (theme() === 'dark' ? '☀' : '☾')}</button>
     </header>
     <div class="body">

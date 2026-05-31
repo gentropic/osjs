@@ -69,15 +69,28 @@ each other / the net centre · move & lock as a set. Distinct from *data* select
 elements. Needs a shared overlay-selection model + an align toolbar shown when ≥2 are
 selected. Print/preview mode is the natural companion.
 
-**Preview / print mode** (overlay-wide — every element, plus the figure chrome):
-a toggle that turns the workspace from *interactive* to *presentation*: hide drag
-handles, resize grips, edit buttons, selection outlines, the engineering-grid
-background, panel/gutter chrome — leaving the camera-ready figure (net + data +
-annotations + tables-as-clean-boxes + legend/title). The same render at higher
-fidelity is the print / export path (→ "Export polish" in dessert). Each overlay
-element needs a "presented" styling variant (e.g. a floating table becomes a plain
-bordered box, no title-bar buttons). Consider a dedicated print stylesheet +
-`window.print()` for true paper output, and a page/figure frame to compose within.
+**Preview / print mode** ✓ (built): a header toggle adds `body.preview` → hides
+drag handles, resize grips, panel buttons, column grips, selection outlines, the
+engineering-grid background and the side/inspector/gutter chrome, leaving a
+camera-ready figure. `print` button enters preview then `window.print()`; an
+`@media print` stylesheet shows only the active plot full-page (white, `@page`
+margins). Still to do: composed **SVG/PNG export** that bakes the HTML overlay
+(annotations/tables/legend) into the vector output — today's SVG/PNG buttons emit
+bearing's net only; print is the only path that captures the full composition.
+
+**Figure / page space** (NEXT — ties preview, the viewport, and a page model
+together): treat the composition as a **figure on a page**, not just an overlay on
+a fixed net. Pieces:
+- **Page-space navigation** — pan & zoom the figure as a canvas (see "Plot viewport"
+  below; the viewport transform is the substrate). Scroll/zoom a page larger than
+  the net, lay elements in the margins, fit-to-page.
+- **Figure configuration** — page size / aspect / orientation, margins, background
+  (paper white vs transparent vs themed), a visible page frame to compose within,
+  and DPI/scale for export. Persisted in the project.
+- Multiple figures / pages eventually (a project holds several composed views) —
+  the QGIS-layout-manager analogue. Defer until single-page is solid.
+This is where preview/print graduates from "hide chrome" to "a real page you arrange
+on and export at a chosen size".
 
 **Annotation coordinate spaces** (per anchor AND leader, independently):
 - **attitude** [trend, plunge] — sticks to a direction, moves with rotation.

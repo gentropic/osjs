@@ -290,6 +290,17 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   assert.equal(handle.project.items().at(-1).type, 'annotation');
 });
 
+test('preview mode: the toggle adds/removes body.preview', async () => {
+  const root = document.createElement('div');
+  mountApp(root);
+  const btn = [...root.querySelectorAll('button')].find((b) => /preview/i.test(b.getAttribute('title') || ''));
+  assert.ok(btn, 'preview toggle present');
+  btn.click(); await tick();
+  assert.ok(document.body.classList.contains('preview'), 'preview class on');
+  btn.click(); await tick();
+  assert.ok(!document.body.classList.contains('preview'), 'preview class off');
+});
+
 test('inline rename: double-click a layer name edits it in place (no browser dialog)', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);
