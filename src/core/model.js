@@ -18,7 +18,7 @@ import { signal } from '../../vendor/sideact/signals.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { point, greatCircle, smallCircle, text, contour, heatmap } from './primitives.js';
 
-const { conversions, statistics, color, fault, vec3 } = bearing;
+const { conversions, statistics, color, fault, vec3, analysis } = bearing;
 const { meanVector, principalAxes, fisherStats } = statistics;
 
 // categorical palette for colour-by-class (distinct, print-friendly)
@@ -202,7 +202,13 @@ export class DataItem {
 
   stats() {
     const d = this.dcos();
-    return d.length >= 2 ? { ...principalAxes(d), fisher: statistics.fisherStats(d) } : null;
+    if (d.length < 2) return null;
+    return {
+      ...principalAxes(d),
+      fisher: statistics.fisherStats(d),
+      bestFit: analysis.bestFitGreatCircle(d),   // girdle plane + fold (β) axis + girdle index
+      uniformity: statistics.uniformityTest(d),  // spherical uniformity (small p ⇒ not random)
+    };
   }
 }
 

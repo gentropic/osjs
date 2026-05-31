@@ -477,6 +477,8 @@ export function mountApp(root) {
     if (!s) return h`<div class="muted">${item.measurements().length} measurement(s) — need ≥2 for stats</div>`;
     const [mt, mp] = conversions.dcosToLine(s.fisher.mean);
     const k = (s.eigenvalues[0] - s.eigenvalues[1]) || 0, e2 = (s.eigenvalues[1] - s.eigenvalues[2]) || 0;
+    const [bd, bdip] = s.bestFit.plane, [ft, fp] = s.bestFit.axis;
+    const up = s.uniformity.p;
     const srow = (key, v) => h`<div class="srow"><span>${key}</span><b>${v}</b></div>`;
     return h`<div class="stats">
       ${srow('S₁ S₂ S₃', s.eigenvalues.map((v) => v.toFixed(3)).join('  '))}
@@ -486,6 +488,9 @@ export function mountApp(root) {
       ${srow('fabric', s.K > 1 ? 'cluster' : s.K < 1 ? 'girdle' : 'uniform')}
       ${srow('Fisher mean', `${az(mt)}/${p2(mp)}`)}
       ${srow('κ · α₉₅ · n', `${s.fisher.kappa.toFixed(1)} · ${s.fisher.alpha95.toFixed(1)}° · ${s.fisher.n}`)}
+      ${srow('best-fit plane', `${az(bd)}/${p2(bdip)}`)}
+      ${srow('fold axis (β)', `${az(ft)}/${p2(fp)}  ·  girdle ${s.bestFit.girdle.toFixed(2)}`)}
+      ${srow('uniformity p', `${up < 0.001 ? '<0.001' : up.toFixed(3)}  (${up < 0.05 ? 'non-random' : 'random'})`)}
     </div>`;
   }
 

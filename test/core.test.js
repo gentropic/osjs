@@ -65,10 +65,13 @@ test('reactive: toggling visibility / editing measurements changes output', () =
   assert.equal(ps.contribute('net').length, 1);
 });
 
-test('stats come from the orientation tensor', () => {
+test('stats come from the orientation tensor (+ best-fit girdle, fold axis, uniformity)', () => {
   const ps = new PlaneSet({ measurements: [[120, 35], [125, 40], [118, 32], [130, 38]] });
   const s = ps.stats();
   assert.ok(s && s.eigenvalues.length === 3 && s.fisher.n === 4);
+  assert.equal(s.bestFit.plane.length, 2);            // best-fit girdle plane [dd,dip]
+  assert.equal(s.bestFit.axis.length, 2);             // fold (β) axis [trend,plunge]
+  assert.ok(s.uniformity.p >= 0 && s.uniformity.p <= 1);
 });
 
 test('items contribute one rose descriptor with the right azimuths', () => {
