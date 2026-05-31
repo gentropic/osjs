@@ -325,6 +325,10 @@ test('composed export: builds a self-contained SVG with the overlay baked in', a
   assert.ok(/<style>/.test(svg), 'inlines the stylesheet so it renders standalone');
   assert.ok(/--ink\s*:/.test(svg), 'inlines the theme variables');
   assert.ok(w >= 1 && h >= 1, 'has positive dimensions');
+  // native SVG: real primitives, no foreignObject
+  const nat = handle.nativeFigure();
+  assert.match(nat.svg, /^<svg[\s>]/, 'native is an SVG');
+  assert.ok(!/foreignObject/.test(nat.svg), 'native export uses no foreignObject');
 });
 
 test('footer zoom control: reflects the viewport and the % resets to 100%', async () => {

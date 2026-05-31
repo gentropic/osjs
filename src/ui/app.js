@@ -1413,13 +1413,64 @@ export function mountApp(root) {
     const inner = `<div xmlns="http://www.w3.org/1999/xhtml" class="osjs-fig preview${dark}" style="position:relative;width:${W}px;height:${H}px;background:${bg};${exportVars()}"><style>${css}</style>${ser}</div>`;
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="${cx} ${cy} ${cw} ${ch}"><foreignObject x="0" y="0" width="${W}" height="${H}">${inner}</foreignObject></svg>`, w: cw, h: ch };
   }
+  // ── native SVG export (real <text>/<rect>/<line>, no foreignObject) ──
+  // Walks the rendered figure and emits SVG primitives by reading each element's
+  // geometry + computed style: backgrounds → <rect>, text nodes → <text>, nested
+  // SVG (the net, the leader lines) embedded directly. Editor-portable + crisp.
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const n2 = (v) => Math.round(v * 100) / 100;
+  const SKIP = '.anno-handle,.fp-resize,.fp-actions,.colgrip,.thead-row,.emptystate,.brushring,.gutter';
+  function nativeFigure() {
+    const wrap = wraps[activeTab()] || wraps.net;
+    const wr = wrap.getBoundingClientRect();
+    const W = Math.max(1, Math.round(wr.width)), H = Math.max(1, Math.round(wr.height));
+    const out = [];
+    const visible = (cs) => cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity !== 0;
+    const emitNested = (svgEl) => {                        // net or leader-line svg → embed at its rect
+      const r = svgEl.getBoundingClientRect(); const c = svgEl.cloneNode(true);
+      c.setAttribute('x', n2(r.left - wr.left)); c.setAttribute('y', n2(r.top - wr.top));
+      c.setAttribute('width', n2(r.width)); c.setAttribute('height', n2(r.height));
+      c.removeAttribute('style'); out.push(new XMLSerializer().serializeToString(c));
+    };
+    const emitBox = (el, cs, r) => {
+      const bg = cs.backgroundColor, hasBg = bg && bg !== 'transparent' && !bg.startsWith('rgba(0, 0, 0, 0');
+      const sides = ['Top', 'Right', 'Bottom', 'Left'].map((s) => parseFloat(cs[`border${s}Width`]) || 0);
+      const bw = Math.max(...sides), hasBorder = bw > 0;
+      if (!hasBg && !hasBorder) return;
+      const rx = parseFloat(cs.borderRadius) || 0;
+      out.push(`<rect x="${n2(r.left - wr.left)}" y="${n2(r.top - wr.top)}" width="${n2(r.width)}" height="${n2(r.height)}"${rx ? ` rx="${n2(rx)}"` : ''} fill="${hasBg ? bg : 'none'}"${hasBorder ? ` stroke="${cs.borderBottomColor || cs.borderTopColor}" stroke-width="${n2(bw)}"` : ''} opacity="${cs.opacity}"/>`);
+    };
+    const emitText = (el, cs, r) => {
+      const t = [...el.childNodes].filter((nd) => nd.nodeType === 3).map((nd) => nd.textContent).join('').trim();
+      if (!t) return;
+      const fs = parseFloat(cs.fontSize) || 12, pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+      const al = cs.textAlign, anchor = al === 'center' ? 'middle' : al === 'right' || al === 'end' ? 'end' : 'start';
+      const x = anchor === 'middle' ? (r.left + r.right) / 2 : anchor === 'end' ? r.right - pr : r.left + pl;
+      out.push(`<text x="${n2(x - wr.left)}" y="${n2(r.top - wr.top + r.height / 2)}" font-family="${xesc(cs.fontFamily)}" font-size="${n2(fs)}" font-weight="${cs.fontWeight}" fill="${cs.color}" text-anchor="${anchor}" dominant-baseline="central" opacity="${cs.opacity}">${xesc(t)}</text>`);
+    };
+    const walk = (el) => {
+      if (el.nodeType !== 1 || (el.matches && el.matches(SKIP)) || el.tagName === 'BUTTON' || el.tagName === 'INPUT') return;
+      const cs = getComputedStyle(el); if (!visible(cs)) return;
+      if (el.namespaceURI === SVGNS) { if (el.tagName.toLowerCase() === 'svg') emitNested(el); return; }   // net / leaders
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) emitBox(el, cs, r);
+      emitText(el, cs, r);
+      for (const c of el.children) walk(c);
+    };
+    for (const child of wrap.children) walk(child);
+    let cx = 0, cy = 0, cw = W, ch = H;
+    if (project.pageShow()) { const fr = pageFrame.getBoundingClientRect(); cx = fr.left - wr.left; cy = fr.top - wr.top; cw = Math.max(1, Math.round(fr.width)); ch = Math.max(1, Math.round(fr.height)); }
+    const bg = project.figureBg() === 'transparent' ? '' : `<rect x="${n2(cx)}" y="${n2(cy)}" width="${cw}" height="${ch}" fill="#ffffff"/>`;
+    return { svg: `<svg xmlns="${SVGNS}" width="${cw}" height="${ch}" viewBox="${n2(cx)} ${n2(cy)} ${cw} ${ch}">${bg}${out.join('')}</svg>`, w: cw, h: ch };
+  }
   const triggerDownload = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
   function exportSVG() {
-    const { svg } = composeFigureSVG();
+    const { svg } = nativeFigure();
     triggerDownload(URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), 'figure.svg');
   }
   function exportPNG() {
-    const { svg, w, h } = composeFigureSVG();
+    const { svg, w, h } = nativeFigure();
     const scale = Math.max(1, project.exportDpi() / 96);
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     const img = new Image();
@@ -1594,5 +1645,5 @@ export function mountApp(root) {
     const saved = JSON.parse(lsGet(LAYOUT_KEY) || 'null'); const body = app.querySelector('.body');
     if (saved && body) { if (saved.side) body.style.setProperty('--side-w', saved.side); if (saved.insp) body.style.setProperty('--insp-w', saved.insp); }
   } catch { /* ignore */ }
-  return { project, net, rose, fabric, select: setSelected, composeFigureSVG };
+  return { project, net, rose, fabric, select: setSelected, composeFigureSVG, nativeFigure };
 }
