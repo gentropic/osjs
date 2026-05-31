@@ -647,13 +647,19 @@ export function mountApp(root) {
         ${field('color', h`<input type="color" value=${st.color || '#1d2733'} oninput=${(e) => set({ color: e.target.value })}>`)}
         ${field('size', num(st.fontSize ?? 13, 8, 36, 1, (e) => set({ fontSize: +e.target.value })))}
         ${field('bold', chips(chip('bold', () => !!item.style().bold, () => set({ bold: !item.currentStyle().bold }))))}
+        <div class="istit">background</div>
+        ${field('box', chips(chip('show', () => !!item.style().box, () => set({ box: !item.currentStyle().box }))))}
+        ${field('fill', h`<input type="color" value=${st.bgColor || '#ffffff'} oninput=${(e) => set({ bgColor: e.target.value })}>`)}
         <div class="istit">anchor</div>
         ${field('space', spaceSeg('anchorSpace', 'anchor'))}
         ${field('at', h`<span class="fv">${num(a[0], -360, 360, 0.1, (e) => setA(0, e.target.value))}${num(a[1], -90, 90, 0.1, (e) => setA(1, e.target.value))}</span>`)}
+        ${field('lock', chips(chip('lock', () => !!item.style().anchorLock, () => set({ anchorLock: !item.currentStyle().anchorLock }))))}
         <div class="istit">leader</div>
         ${field('show', chips(chip('show', () => !!item.style().leader, () => set({ leader: item.currentStyle().leader ? null : [...(item.currentStyle().anchor || [0, 90])] }))))}
         ${field('space', spaceSeg('leaderSpace', 'leader'))}
         ${field('to', h`<span class="fv">${num(l[0], -360, 360, 0.1, (e) => setL(0, e.target.value))}${num(l[1], -90, 90, 0.1, (e) => setL(1, e.target.value))}</span>`)}
+        ${field('arrow', chips(chip('arrow', () => !!item.style().leaderArrow, () => set({ leaderArrow: !item.currentStyle().leaderArrow }))))}
+        ${field('lock', chips(chip('lock', () => !!item.style().leaderLock, () => set({ leaderLock: !item.currentStyle().leaderLock }))))}
       </div>`;
     }
     return h`<div class="pbody">
@@ -791,44 +797,69 @@ export function mountApp(root) {
   // plot primitives. Anchor/leader each live in attitude or figure space.
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
-  function dragAnno(e, a, el) {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    el.setPointerCapture?.(e.pointerId);
-    const space = a.style().anchorSpace || 'attitude'; let coords = null;
+  // drag the anchor (which='anchor', moves the label) or the leader target
+  // (which='leader', moves the handle). Locked endpoints don't drag. Updates the
+  // element + the live leader-line end directly; commits the coord on release.
+  function dragPoint(e, a, el, which) {
+    const st = a.style();
+    if (e.button !== 0 || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
+    e.preventDefault(); e.stopPropagation(); el.setPointerCapture?.(e.pointerId);
+    const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude';
+    const line = annoLeaders.querySelector(`[data-anno="${a.id}"]`); let coords = null;
     const move = (ev) => {
       const sr = net.element.getBoundingClientRect();
       const px = ev.clientX - sr.left, py = ev.clientY - sr.top;
       const c = net.locate(space, px, py); if (!c) return;
       coords = c; el.style.left = `${px}px`; el.style.top = `${py}px`;
-      const line = annoLeaders.querySelector(`[data-anno="${a.id}"]`);
-      if (line) { line.setAttribute('x2', px); line.setAttribute('y2', py); }
+      if (line) { line.setAttribute(which === 'anchor' ? 'x2' : 'x1', px); line.setAttribute(which === 'anchor' ? 'y2' : 'y1', py); }
     };
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); if (coords) a.setStyle({ ...a.currentStyle(), anchor: coords }); };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); if (coords) a.setStyle({ ...a.currentStyle(), [which]: coords }); };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   }
+  const arrowPath = (t, ex, ey, c) => {
+    const dx = t.x - ex, dy = t.y - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    const bx = t.x - ux * 8, by = t.y - uy * 8, px = -uy * 4, py = ux * 4;
+    return `<path d="M${t.x},${t.y} L${bx + px},${by + py} L${bx - px},${by - py} Z" fill="${c || '#1d2733'}"/>`;
+  };
   function renderAnnos() {
     const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return;
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) { annoLayer.replaceChildren(); return; }            // not laid out (hidden tab / headless)
     annoLayer.style.cssText = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
     const annos = project.visibleLeaves().filter((it) => it.type === 'annotation');
-    const lines = [], labels = [];
-    for (const a of annos) {
+    const rows = annos.map((a) => {
       const st = a.style();
       const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
-      if (st.leader) { const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]); lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${anchor.x}" y2="${anchor.y}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`); }
       const el = document.createElement('div');
-      el.className = `anno-label${anchor.hidden ? ' under' : ''}${selected() === a ? ' sel' : ''}`;
+      el.className = `anno-label${anchor.hidden ? ' under' : ''}${selected() === a ? ' sel' : ''}${st.anchorLock ? ' locked' : ''}`;
       el.style.left = `${anchor.x}px`; el.style.top = `${anchor.y}px`;
       el.style.color = st.color || '#1d2733'; el.style.fontSize = `${st.fontSize || 13}px`; el.style.fontWeight = st.bold ? 700 : 400;
+      if (st.box) { el.classList.add('box'); el.style.background = st.bgColor || '#ffffff'; }
       el.textContent = st.text || 'note';
       el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
-      el.addEventListener('pointerdown', (ev) => dragAnno(ev, a, el));
-      labels.push(el);
+      el.addEventListener('pointerdown', (ev) => dragPoint(ev, a, el, 'anchor'));
+      return { a, st, el, anchor };
+    });
+    annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el));   // append labels first to measure
+    const lines = [], handles = [];
+    for (const { a, st, el, anchor } of rows) {
+      if (!st.leader) continue;
+      const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]);
+      const hw = (el.offsetWidth || 20) / 2 + 2, hh = (el.offsetHeight || 16) / 2 + 2;
+      const dx = t.x - anchor.x, dy = t.y - anchor.y;
+      const s = Math.min(1, 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh, 1e-6));
+      const ex = anchor.x + dx * s, ey = anchor.y + dy * s;            // attach at the label edge
+      lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${ex}" y2="${ey}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);
+      if (st.leaderArrow) lines.push(arrowPath(t, ex, ey, st.color));
+      const hd = document.createElement('div');
+      hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}`;
+      hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
+      hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
+      handles.push(hd);
     }
     annoLeaders.innerHTML = lines.join('');
-    annoLayer.replaceChildren(annoLeaders, ...labels);
+    annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el), ...handles);
   }
   net.onAfterRender = renderAnnos;
   effect(() => { project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // rebuild on add/edit/remove

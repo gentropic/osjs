@@ -106,6 +106,11 @@
     .anno-label:hover { background: color-mix(in srgb, var(--panel) 70%, transparent); }
     .anno-label.sel { outline: 1px dashed var(--cyan); }
     .anno-label.under { opacity: .4; }   /* anchor on the hidden hemisphere */
+    .anno-label.box { border: 1px solid var(--line-2); box-shadow: 0 1px 3px rgba(40,55,75,.12); }
+    .anno-label.locked { cursor: default; }
+    .anno-handle { position: absolute; transform: translate(-50%, -50%); width: 9px; height: 9px; border-radius: 50%;
+                   background: var(--panel-2); border: 1.5px solid var(--cyan); pointer-events: auto; cursor: move; z-index: 1; }
+    .anno-handle.locked { cursor: default; border-color: var(--ink-faint); }
     /* data table tab */
     .tablewrap { align-items: stretch; justify-content: flex-start; padding: 14px; }
     .tablebox { display: flex; flex-direction: column; gap: 8px; width: 100%; height: 100%; min-height: 0; }

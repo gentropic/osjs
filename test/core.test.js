@@ -173,19 +173,18 @@ test('small circles contribute an axis point + a cone per datum (aperture as ang
 });
 
 test('annotation: content lives in style, emits no plot primitive, round-trips', () => {
-  const a = new Annotation({ name: 'n', style: { text: 'fold axis', anchor: [120, 30], anchorSpace: 'figure' } });
+  const a = new Annotation({ name: 'n', style: { text: 'fold axis', anchor: [120, 30], anchorSpace: 'figure', leader: [200, 10], leaderArrow: true, anchorLock: true, box: true, bgColor: '#eee' } });
   assert.deepEqual(a.contribute('net'), []);     // rendered by the UI overlay, not a primitive
   assert.equal(a.contribute('rose').length, 0);
   assert.equal(a.stats(), null);
   assert.equal(a.currentStyle().text, 'fold axis');
-  // content + spaces round-trip (they live in style)
+  // content + spaces + leader/lock/box options round-trip (they live in style)
   const p = new Project(); p.add(a);
   const q = new Project(); loadProject(q, JSON.parse(JSON.stringify(serializeProject(p))));
-  const r = q.items()[0];
-  assert.equal(r.type, 'annotation');
-  assert.equal(r.currentStyle().text, 'fold axis');
-  assert.deepEqual(r.currentStyle().anchor, [120, 30]);
-  assert.equal(r.currentStyle().anchorSpace, 'figure');
+  const r = q.items()[0].currentStyle();
+  assert.equal(q.items()[0].type, 'annotation');
+  assert.deepEqual([r.text, r.anchor, r.anchorSpace], ['fold axis', [120, 30], 'figure']);
+  assert.deepEqual([r.leader, r.leaderArrow, r.anchorLock, r.box, r.bgColor], [[200, 10], true, true, true, '#eee']);
 });
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
