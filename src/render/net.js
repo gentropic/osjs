@@ -28,6 +28,16 @@ function dihedraColor(t) {
 // plane dash, point edge-width. A class rule beats a presentation attribute,
 // so the two never fight over colour.
 const cls = (st, item) => [item && `ds-${item}`, st.class].filter(Boolean).join(' ') || undefined;
+// walk up from a hit element to the owning data item id (the `ds-<id>` class the
+// renderer stamps on every primitive), so a click can select that layer.
+function dsId(el, root) {
+  for (let n = el; n && n !== root; n = n.parentNode) {
+    const c = n.getAttribute && n.getAttribute('class');
+    const m = c && /(?:^|\s)ds-([^\s]+)/.exec(c);
+    if (m) return m[1];
+  }
+  return null;
+}
 const pointStyle = (st, item) => {
   const open = st.pointFill === 'open';
   const color = st.color || st.fill || '#888888';
@@ -46,11 +56,12 @@ export class NetRenderer {
   constructor(project, opts = {}) {
     this.project = project;
     this._size = opts.size || 540;
-    this.mode = 'measure';        // 'measure' | 'rotate' | 'pick'
+    this.mode = 'select';         // 'select' | 'measure' | 'rotate' | 'pick'
     this._measure = null;         // { a:dcos, b:dcos|null } two-click angle measurement
     this.onHover = null;
     this.onPick = null;
     this.onMeasure = null;
+    this.onSelect = null;         // (itemId|null) — select mode: click a layer / empty to deselect
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -188,13 +199,14 @@ export class NetRenderer {
           const b = sn.unproject(p.x, p.y);
           if (b) { this._measure.b = b; this.render(); if (this.onMeasure) this.onMeasure(this.measure()); }
         }
-      } else if (this.onHover) {                   // hover → read-out
-        this.onHover(sn.unproject(p.x, p.y));
+      } else {
+        if (this.mode === 'select') el.style.cursor = dsId(e.target, el) ? 'pointer' : 'default';
+        if (this.onHover) this.onHover(sn.unproject(p.x, p.y));   // hover → read-out
       }
     });
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      cur = toSvg(e); moved = false; el.setPointerCapture?.(e.pointerId); e.preventDefault();
+      cur = toSvg(e); moved = false; this._downEl = e.target; el.setPointerCapture?.(e.pointerId); e.preventDefault();
       if (this.mode === 'rotate') el.style.cursor = 'grabbing';
       if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
@@ -204,13 +216,14 @@ export class NetRenderer {
       cur = null;
       if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
       else if (this.mode === 'measure' && wasClick) { this._measure = null; this.render(); }  // click (no drag) cancels
+      else if (this.mode === 'select' && wasClick && this.onSelect) this.onSelect(dsId(this._downEl, el));  // null = empty → deselect
       this._syncCursor();
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
     this._syncCursor();
   }
 
-  // GIS-like per-mode affordance: grab to spin, crosshair to measure, copy to pick-add
-  _syncCursor() { this._el.style.cursor = this.mode === 'rotate' ? 'grab' : this.mode === 'pick' ? 'copy' : 'crosshair'; }
+  // GIS-like per-mode affordance: arrow to select, grab to spin, crosshair to measure, copy to pick-add
+  _syncCursor() { this._el.style.cursor = this.mode === 'select' ? 'default' : this.mode === 'rotate' ? 'grab' : this.mode === 'pick' ? 'copy' : 'crosshair'; }
   setMode(m) { this.mode = m; this._syncCursor(); }
 }

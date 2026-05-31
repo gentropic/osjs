@@ -184,11 +184,12 @@ test('undo / redo restores project state after a change', async () => {
   assert.equal(project.items()[0].measurements().length, n0 + 1, 'redo re-applies it');
 });
 
-test('net interaction: measure is default; a drag measures an angle + builds a plane', async () => {
+test('net interaction: select is default; measure mode drags an angle + builds a plane', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);
   const net = handle.net;
-  assert.equal(net.mode, 'measure', 'measure is the default mode (not rotate)');
+  assert.equal(net.mode, 'select', 'select is the default mode (non-destructive)');
+  net.setMode('measure');
 
   // simulate a press-drag (A then B); the pointer plumbing sets net._measure
   const a = bearingDir(0, 0), b = bearingDir(90, 0);    // N-horizontal and E-horizontal lines
@@ -204,6 +205,18 @@ test('net interaction: measure is default; a drag measures an angle + builds a p
   [...root.querySelectorAll('.measurebar .mini')].find((x) => /plane/.test(x.textContent)).click();
   assert.equal(handle.project.items().length, n0 + 1);
   assert.equal(handle.project.items().at(-1).type, 'planes');
+});
+
+test('net select mode: onSelect resolves a layer id, null deselects', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const net = handle.net;
+  const it = handle.project.items()[0];
+  assert.ok(it, 'seeded with at least one layer');
+  net.onSelect(it.id); await tick();
+  assert.ok([...root.querySelectorAll('.it.sel')].length >= 1, 'selecting an id marks a tree row selected');
+  net.onSelect(null); await tick();
+  assert.equal(root.querySelectorAll('.it.sel').length, 0, 'null deselects');
 });
 
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)

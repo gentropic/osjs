@@ -73,7 +73,7 @@ export function mountApp(root) {
   const [selected, setSelected] = signal(project.items()[0] || null);
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
-  const [mode, setMode] = signal('measure');   // net interaction: measure | rotate | pick
+  const [mode, setMode] = signal('select');   // net interaction: select | measure | rotate | pick
   const [measure, setMeasure] = signal(null);   // last two-click measurement
   const [cursor, setCursor] = signal(null);
   const [activeTab, setActiveTab] = signal('net');
@@ -131,8 +131,9 @@ export function mountApp(root) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = e.key.toLowerCase();
-    if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
+    if (k === 's') setMode('select'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
     else if (k === '0') net.resetView();
+    else if (k === 'escape') setSelected(null);
   });
   effect(() => {
     touchTree(project.nodes());                              // subscribe to the whole tree
@@ -196,6 +197,7 @@ export function mountApp(root) {
 
   net.onHover = (d) => setCursor(d);
   net.onMeasure = (m) => setMeasure(m);
+  net.onSelect = (id) => setSelected(id ? (project.items().find((x) => x.id === id) || null) : null);  // click a layer / empty → deselect
   net.onPick = (d) => {
     const it = selected();
     if (!it || isGroup(it) || it.type === 'fault' || it.type === 'annotation') return;   // faults need rake+sense → use the form
@@ -806,30 +808,49 @@ export function mountApp(root) {
   // plot primitives. Anchor/leader each live in attitude or figure space.
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
+  const px = (v) => parseFloat(v) || 0;
+  const arrowD = (tx, ty, ex, ey) => {                  // triangle at the target, pointing along the leader
+    const dx = tx - ex, dy = ty - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    const bx = tx - ux * 8, by = ty - uy * 8, nx = -uy * 4, ny = ux * 4;
+    return `M${tx},${ty} L${bx + nx},${by + ny} L${bx - nx},${by - ny} Z`;
+  };
+  // Recompute one annotation's leader (line + arrow) from the LIVE positions of
+  // its label and handle in the DOM — so a drag in progress keeps the line and
+  // arrowhead glued to the moving end, without recommitting coords mid-drag.
+  function refreshLeader(a) {
+    const line = annoLeaders.querySelector(`line[data-anno="${a.id}"]`);
+    const label = annoLayer.querySelector(`[data-anno-label="${a.id}"]`);
+    if (!line || !label) return;
+    const ax = px(label.style.left), ay = px(label.style.top);
+    const handle = annoLayer.querySelector(`[data-anno-handle="${a.id}"]`);
+    let tx, ty;
+    if (handle) { tx = px(handle.style.left); ty = px(handle.style.top); }
+    else { const st = a.style(); const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]); tx = t.x; ty = t.y; }
+    const hw = (label.offsetWidth || 20) / 2 + 2, hh = (label.offsetHeight || 16) / 2 + 2;
+    const dx = tx - ax, dy = ty - ay, s = Math.min(1, 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh, 1e-6));
+    const ex = ax + dx * s, ey = ay + dy * s;            // attach at the label edge
+    line.setAttribute('x1', tx); line.setAttribute('y1', ty); line.setAttribute('x2', ex); line.setAttribute('y2', ey);
+    const arrow = annoLeaders.querySelector(`path[data-arrow="${a.id}"]`);
+    if (arrow) arrow.setAttribute('d', arrowD(tx, ty, ex, ey));
+  }
   // drag the anchor (which='anchor', moves the label) or the leader target
-  // (which='leader', moves the handle). Locked endpoints don't drag. Updates the
-  // element + the live leader-line end directly; commits the coord on release.
+  // (which='leader', moves the handle). Locked endpoints don't drag; commits the
+  // coord on release. refreshLeader keeps line + arrow following the moved end.
   function dragPoint(e, a, el, which) {
     const st = a.style();
     if (e.button !== 0 || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
     e.preventDefault(); e.stopPropagation(); el.setPointerCapture?.(e.pointerId);
-    const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude';
-    const line = annoLeaders.querySelector(`[data-anno="${a.id}"]`); let coords = null;
+    const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude'; let coords = null;
     const move = (ev) => {
       const sr = net.element.getBoundingClientRect();
-      const px = ev.clientX - sr.left, py = ev.clientY - sr.top;
-      const c = net.locate(space, px, py); if (!c) return;
-      coords = c; el.style.left = `${px}px`; el.style.top = `${py}px`;
-      if (line) { line.setAttribute(which === 'anchor' ? 'x2' : 'x1', px); line.setAttribute(which === 'anchor' ? 'y2' : 'y1', py); }
+      const mx = ev.clientX - sr.left, my = ev.clientY - sr.top;
+      const c = net.locate(space, mx, my); if (!c) return;
+      coords = c; el.style.left = `${mx}px`; el.style.top = `${my}px`;
+      if (st.leader) refreshLeader(a);
     };
     const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); if (coords) a.setStyle({ ...a.currentStyle(), [which]: coords }); };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   }
-  const arrowPath = (t, ex, ey, c) => {
-    const dx = t.x - ex, dy = t.y - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-    const bx = t.x - ux * 8, by = t.y - uy * 8, px = -uy * 4, py = ux * 4;
-    return `<path d="M${t.x},${t.y} L${bx + px},${by + py} L${bx - px},${by - py} Z" fill="${c || '#1d2733'}"/>`;
-  };
   function renderAnnos() {
     const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return;
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
@@ -840,6 +861,7 @@ export function mountApp(root) {
       const st = a.style();
       const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
       const el = document.createElement('div');
+      el.dataset.annoLabel = a.id;
       el.className = `anno-label${anchor.hidden ? ' under' : ''}${selected() === a ? ' sel' : ''}${st.anchorLock ? ' locked' : ''}`;
       el.style.left = `${anchor.x}px`; el.style.top = `${anchor.y}px`;
       el.style.color = st.color || '#1d2733'; el.style.fontSize = `${st.fontSize || 13}px`; el.style.fontWeight = st.bold ? 700 : 400;
@@ -859,9 +881,10 @@ export function mountApp(root) {
       const s = Math.min(1, 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh, 1e-6));
       const ex = anchor.x + dx * s, ey = anchor.y + dy * s;            // attach at the label edge
       lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${ex}" y2="${ey}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);
-      if (st.leaderArrow) lines.push(arrowPath(t, ex, ey, st.color));
+      if (st.leaderArrow) lines.push(`<path data-arrow="${a.id}" d="${arrowD(t.x, t.y, ex, ey)}" fill="${st.color || '#1d2733'}"/>`);
       if (selected() === a) {                              // edit handle only on the selected annotation
         const hd = document.createElement('div');
+        hd.dataset.annoHandle = a.id;
         hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}`;
         hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
         hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
@@ -886,10 +909,11 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${m === 'measure' ? 'measure (m): click two points → angle + their common plane' : m === 'rotate' ? 'rotate (r): drag to spin the net' : 'pick (p): click to add a measurement to the selected layer'} onclick=${() => setMode(m)}>${label}</button>`;
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
-    if (!d) return mode() === 'measure' ? 'measure: click two points' : '';
+    if (!d) return mode() === 'measure' ? 'measure: click two points' : mode() === 'select' ? 'select: click a layer · empty to deselect' : '';
     const [t, p] = conversions.dcosToLine(d);
     const [dd, dip] = conversions.dcosToPlane(d);
     return `line ${az(t)}/${p2(p)}  ·  plane ${az(dd)}/${p2(dip)}`;
@@ -952,7 +976,7 @@ export function mountApp(root) {
       <span class="spacer"></span>
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
-        ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+        ${modeSeg('select', 'select')}${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
       </div>
       <div class="grp">
