@@ -87,6 +87,30 @@ lat/lon box adds trend-wraparound fuss for little gain.
 P3 (maybe): per-tool combine buttons (vs the Shift/Alt modifiers), selection
 scoped to active-layer vs all-visible toggle, by-attribute select (where col = x).
 
+## Table cell-range selection + anchored paste (spreadsheet model)
+
+A *second*, distinct selection space from the net flagship above: **table cells**,
+not orientations. Today: copy → TSV (done), paste → **append** rows (done). Next:
+make the table behave like a spreadsheet so paste can **replace** in place.
+
+- **Cell / range selection** — click a cell to anchor; drag or Shift-click to extend
+  a rectangular range (incl. whole-row via the `#` gutter, whole-column via the
+  header). Reuses nothing from the net selection — it's grid coordinates.
+- **Anchored paste** — with a TSV/CSV on the clipboard, paste writes the block with
+  its top-left at the anchor cell, **overwriting** the covered cells; rows past the
+  bottom grow the table (so today's append = "anchor at the end / no selection").
+  Geometry-vs-data mapping follows the *column position* the paste lands on, so you
+  can drop a block of dips into the dip column without touching dip-dir.
+- **Copy** then narrows to the selected range (currently whole table).
+- **Fit check** — only treat it as a range-replace when the pasted shape sits inside
+  (or just past) the table; otherwise fall back to append + notify, so a stray paste
+  never silently clobbers data.
+- Delete/clear the selected range; fill-down; maybe column reorder — all natural
+  once cell-range selection exists.
+
+Keep it clearly separate from the net Selections flagship in code and UI (one is
+dcos-space, one is grid-space) even though both are "select → act".
+
 ## Composition overlay → map-composer (flagship #2)
 
 Realisation: floating tables, draggable annotations, on-plot legend/title, and a
