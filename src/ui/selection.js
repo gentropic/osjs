@@ -69,11 +69,16 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     if (cur.length > 1) runs.push(cur);
     return runs;
   }
-  // band outline = central great circle + the two small-circle edges (pole `axis`,
-  // half-width `w`), each broken at the back hemisphere
+  // band outline = central great circle + the two flanking small circles (the
+  // band is everything within `w` of the great circle, i.e. acos|dot|≥π/2−w). The
+  // two edges are the radius-(π/2−w) small circles about the pole AND its antipode
+  // (a radius-(π/2+w) circle about the pole is the same circle about −pole); using
+  // the antipode keeps both radii <90° so they render as clean arcs, not the long
+  // chords you get sampling a >90° circle through the back hemisphere.
   function bandSegments(axis, w) {
-    const mk = (r, cls) => coneSegments(axis, r).map((run) => `<polyline class="${cls}" points="${run.join(' ')}"/>`).join('');
-    return mk(Math.PI / 2, 'cone') + mk(Math.PI / 2 - w, 'band-edge') + mk(Math.PI / 2 + w, 'band-edge');
+    const neg = vec3.scale(axis, -1);
+    const mk = (ax, r, cls) => coneSegments(ax, r).map((run) => `<polyline class="${cls}" points="${run.join(' ')}"/>`).join('');
+    return mk(axis, Math.PI / 2, 'cone') + mk(axis, Math.PI / 2 - w, 'band-edge') + mk(neg, Math.PI / 2 - w, 'band-edge');
   }
   // spherical point-in-polygon by signed-angle winding: sum the tangent-plane
   // angles each edge subtends at p; |Σ| ≈ 2π inside the polygon, ≈ 0 outside.
