@@ -100,15 +100,16 @@ a fixed net. Pieces:
     overlay (annotations/tables/legend) into the raster/vector.
   - **Explicit page size** (mm/in, named presets A4/Letter/…) not just aspect, so
     DPI×size gives real output pixel dimensions.
-  - **Composed SVG/PNG export** ✓ (built) — the plot container (net SVG + overlays)
-    is serialized into one SVG via `<foreignObject>` with the stylesheets + theme
-    vars inlined; SVG downloads it, PNG rasterizes via `<img>`+canvas at exportDpi;
-    page frame on → viewBox crops to the page. `composeFigureSVG()`. Caveats to
-    revisit: web fonts fall back to system (not embedded); Safari/`foreignObject`
-    canvas-taint may block PNG there; consider embedding fonts + an SVG-native
-    (no-foreignObject) path for editor interop (Illustrator).
-  - **Print** could now reuse the composed render instead of `window.print()` of
-    the live DOM (more reliable) — open the composed SVG in a print window.
+  - **Composed export** ✓ (built). Two render paths:
+    - *native SVG* (`nativeFigure()`) — real `<text>`/`<rect>`/`<line>` from a
+      generic DOM→SVG walker; no foreignObject → editor-portable + no canvas taint.
+      SVG + PNG buttons use this; page-frame crop + exportDpi honored.
+    - *foreignObject* (`composeFigureSVG()`) — exact browser render, used by print
+      (rendered in a hidden iframe, fits one A4 page).
+    Remaining polish: **embed fonts** (data-URI) for byte-identical self-contained
+    output (today fonts are referenced by family → editors substitute); carry the
+    injected per-datum opacity/dash CSS into the embedded net; native legend ramp
+    gradients (currently the gradient bar is a div bg → may flatten).
 - Multiple figures / pages eventually (a project holds several composed views) —
   the QGIS-layout-manager analogue. Defer until single-page is solid.
 This is where preview/print graduates from "hide chrome" to "a real page you arrange
