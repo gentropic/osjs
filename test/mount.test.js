@@ -107,6 +107,25 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('empty state appears with no data and loads a sample; samples strip is persistent', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const empty = root.querySelector('.emptystate');
+  assert.ok(empty, 'empty-state element exists');
+  // clear the seed → empty state shows + offers samples
+  [...project.nodes()].forEach((n) => project.remove(n));
+  await tick();
+  assert.notEqual(empty.style.display, 'none', 'empty state shown when no data');
+  assert.ok(root.querySelectorAll('.es-samples .btn').length >= 3, 'sample buttons offered');
+
+  root.querySelector('.es-samples .btn').click();           // load the first sample
+  await tick();
+  assert.ok(project.items().length > 0, 'a sample loaded data');
+  assert.equal(empty.style.display, 'none', 'empty state hidden once data exists');
+  // persistent samples strip still reachable
+  assert.ok(root.querySelectorAll('.samplesrow .slink').length >= 3);
+});
+
 test('annotations: add a note → renders on the net, inspector shows the editor', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);

@@ -122,6 +122,19 @@
     .dtable .tdel .rm { border: 0; background: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; }
     .dtable .tdel .rm:hover { color: #d24b6b; }
     .plotwrap svg { width: min(70vh, 560px); height: auto; filter: drop-shadow(0 1px 6px rgba(40,55,75,.10)); }
+    /* guided empty state */
+    .emptystate { position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; }
+    .es-card { pointer-events: auto; text-align: center; padding: 22px 26px; background: color-mix(in srgb, var(--panel) 90%, transparent);
+               border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 14px rgba(40,55,75,.12); max-width: 360px; }
+    .es-glyph { font-size: 30px; color: var(--accent-text); line-height: 1; }
+    .es-title { font-weight: 700; font-size: 17px; letter-spacing: .02em; margin: 8px 0 2px; }
+    .es-sub { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 12px; }
+    .es-samples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .es-hint { margin-top: 14px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
+    .samplesrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 12px 12px; }
+    .samplesrow > span { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+    .slink { font: inherit; font-size: 11px; color: var(--cyan-text); background: none; border: 0; padding: 0; cursor: pointer; }
+    .slink:hover { text-decoration: underline; }
     /* net legend overlay */
     .netlegend { position: absolute; left: 14px; bottom: 14px; max-width: 46%; pointer-events: none; }
     .lg { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; font-size: 11px;

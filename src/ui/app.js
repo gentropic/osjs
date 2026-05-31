@@ -26,6 +26,23 @@ import { parseOpenStereo } from '../io/openstereo.js';
 const { conversions, color } = bearing;
 const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
 const PALETTE = ['#1aa39a', '#e8920c', '#cc3333', '#7a5cff', '#3a9a3a', '#c060c0', '#d4548a', '#5bb8d4'];
+
+// built-in example projects (serializeProject shape → flow straight through loadProject)
+const SAMPLES = [
+  { label: 'bedding & joints', project: { format: 'osjs-project', version: 2, projection: 'equal-area', items: [
+    { type: 'planes', name: 'bedding', style: { color: PALETTE[0], width: 1 }, measurements: [[120, 35], [125, 40], [118, 32], [130, 38], [122, 42], [127, 36], [115, 30], [124, 41]] },
+    { type: 'poles', name: 'joints', style: { color: PALETTE[1], size: 4 }, measurements: [[210, 78], [214, 82], [206, 75], [218, 80], [203, 84], [212, 71]] },
+  ] } },
+  { label: 'folded bedding', project: { format: 'osjs-project', version: 2, projection: 'equal-area', items: [
+    { type: 'planes', name: 'folded bedding', style: { color: PALETTE[3], width: 1 },
+      layers: { great: true, poles: true, eigen: true }, params: { eigPole: [true, true, true], eigPlane: [false, false, true] },
+      measurements: [[10, 60], [30, 55], [50, 48], [70, 40], [90, 35], [110, 40], [130, 48], [150, 55], [170, 62], [350, 65], [330, 58], [310, 50]] },
+  ] } },
+  { label: 'fault-slip', project: { format: 'osjs-project', version: 2, projection: 'equal-area', items: [
+    { type: 'fault', name: 'faults', style: { color: PALETTE[2], width: 1 }, layers: { planes: true, slip: true },
+      measurements: [[120, 60, 80, 2], [125, 55, 75, 2], [300, 50, 30, 1], [295, 48, 35, 1], [210, 70, 90, 3], [205, 72, 85, 3]] },
+  ] } },
+];
 const az = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0');
 const p2 = (x) => String(Math.round(x)).padStart(2, '0');
 const fmtNum = (x) => (Number.isInteger(x) ? String(x) : Math.abs(x) >= 100 ? String(Math.round(x)) : x.toFixed(2));
@@ -146,6 +163,7 @@ export function mountApp(root) {
   openInput.type = 'file'; openInput.multiple = true;
   openInput.accept = '.json,.osjs,.openstereo,.txt,.csv,.tsv,application/json,application/zip';
   openInput.onchange = () => { openFiles(openInput.files); openInput.value = ''; };
+  const loadSample = (s) => { loadProject(project, s.project); setSelected(project.items()[0] || null); setNotice(''); };
 
   // ── per-item stylesheet ──
   // Opacity, line-style and open/filled markers ride on CSS keyed to a `ds-<id>`
@@ -686,6 +704,15 @@ export function mountApp(root) {
     </div>`;
   }
 
+  // guided empty state — shown over the plot area when there is no data
+  const emptyState = h`<div class="emptystate"><div class="es-card">
+    <div class="es-glyph">⌖</div>
+    <div class="es-title">An empty net.</div>
+    <div class="es-sub">Add measurements, open a project, or start from a sample —</div>
+    <div class="es-samples">${SAMPLES.map((s) => h`<button class="btn" onclick=${() => loadSample(s)}>${s.label}</button>`)}</div>
+    <div class="es-hint">tip — in the projection view, drag between two points to measure an angle</div>
+  </div></div>`;
+  effect(() => { emptyState.style.display = project.items().length ? 'none' : 'flex'; });
   const wraps = {
     net: h`<div class="plotwrap">${net.element}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
@@ -761,10 +788,11 @@ export function mountApp(root) {
           <button class="sectbtn" title="add a group" onclick=${() => setSelected(project.addGroup('group'))}>＋ group</button></div>
         <div class="list" ondragover=${(e) => { if (dragNode) e.preventDefault(); }} ondrop=${(e) => { e.preventDefault(); if (dragNode) { project.move(dragNode, null, project.nodes().length); dragNode = null; } }}>${list}</div>
         ${addHost}
+        <div class="samplesrow"><span>samples</span>${SAMPLES.map((s) => h`<button class="slink" onclick=${() => loadSample(s)}>${s.label}</button>`)}</div>
       </aside>
       <main class="main">
         <div class="tabs">${tab('net', 'projection')}${tab('rose', 'rose')}${tab('fabric', 'fabric')}${tab('table', 'table')}</div>
-        <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}${wraps.table}</div>
+        <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}${wraps.table}${emptyState}</div>
       </main>
       <aside class="inspector">
         <div class="sect">properties</div>
