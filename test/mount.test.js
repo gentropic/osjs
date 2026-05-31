@@ -107,6 +107,25 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
 });
 
+test('undo / redo restores project state after a change', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const undoBtn = [...root.querySelectorAll('.topbar button')].find((b) => b.title && /undo/i.test(b.title));
+  const redoBtn = [...root.querySelectorAll('.topbar button')].find((b) => b.title && /redo/i.test(b.title));
+  assert.ok(undoBtn && redoBtn, 'undo/redo controls present');
+
+  const item = project.items()[0];
+  const n0 = item.measurements().length;
+  item.setMeasurements([...item.measurements(), [42, 42]]);   // a change
+  await new Promise((r) => setTimeout(r, 400));               // let the debounced snapshot land
+  assert.equal(project.items()[0].measurements().length, n0 + 1);
+
+  undoBtn.click();
+  assert.equal(project.items()[0].measurements().length, n0, 'undo reverts the added measurement');
+  redoBtn.click();
+  assert.equal(project.items()[0].measurements().length, n0 + 1, 'redo re-applies it');
+});
+
 test('net interaction: measure is default; a drag measures an angle + builds a plane', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);

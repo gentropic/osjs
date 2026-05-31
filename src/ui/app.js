@@ -67,16 +67,52 @@ export function mountApp(root) {
   const fabric = new FabricRenderer(project, { mode: 'woodcock', size: 300 });
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
-  // ── persistence: autosave to localStorage; explicit save/open as a file ──
+  // ── persistence + undo/redo history ──
+  // The reactive effect below fires on any project change; it autosaves and, after
+  // a short debounce (so a slider drag = one step), pushes a snapshot onto an
+  // undo stack. serializeProject already captures full state, so history is just
+  // a stack of those + a pointer; undo/redo restore via loadProject.
   const touchTree = (list) => list.forEach((n) => {
     n.name(); n.visible();
     if (isGroup(n)) { n.expanded(); touchTree(n.children()); }
     else { n.measurements(); n.style(); n.params(); n.layers(); n.columns(); }
   });
+  const history = [JSON.stringify(serializeProject(project))];
+  let histIndex = 0, snapTimer = null;
+  const [histVer, setHistVer] = signal(0);
+  const canUndo = () => { histVer(); return histIndex > 0; };
+  const canRedo = () => { histVer(); return histIndex < history.length - 1; };
+  const recordSnapshot = () => {
+    const snap = JSON.stringify(serializeProject(project));
+    if (snap === history[histIndex]) return;                 // no real change
+    history.splice(histIndex + 1);                            // drop the redo branch
+    history.push(snap);
+    if (history.length > 100) history.shift();
+    histIndex = history.length - 1;
+    setHistVer((v) => v + 1);
+  };
+  const flushSnapshot = () => { if (snapTimer) { clearTimeout(snapTimer); snapTimer = null; recordSnapshot(); } };
+  const restore = () => {
+    flushSnapshot();
+    loadProject(project, JSON.parse(history[histIndex]));
+    setSelected(project.items()[0] || null);
+    setHistVer((v) => v + 1);
+  };
+  const undo = () => { flushSnapshot(); if (histIndex <= 0) return; histIndex--; restore(); };
+  const redo = () => { if (histIndex >= history.length - 1) return; histIndex++; restore(); };
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;  // leave native text undo
+    const z = e.key === 'z' || e.key === 'Z';
+    if (z && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if (e.key === 'y' || e.key === 'Y' || (z && e.shiftKey)) { e.preventDefault(); redo(); }
+  });
   effect(() => {
     touchTree(project.nodes());                              // subscribe to the whole tree
-    project.projection(); project.roseBinWidth();
-    lsSet(LS_KEY, JSON.stringify(serializeProject(project)));
+    const json = JSON.stringify(serializeProject(project));
+    lsSet(LS_KEY, json);
+    if (json !== history[histIndex]) { clearTimeout(snapTimer); snapTimer = setTimeout(recordSnapshot, 350); }
   });
   const saveProject = () => {
     const blob = new Blob([JSON.stringify(serializeProject(project), null, 2)], { type: 'application/json' });
@@ -684,6 +720,10 @@ export function mountApp(root) {
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
         ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+      </div>
+      <div class="grp">
+        <button class=${() => (canUndo() ? 'seg' : 'seg dim')} title="undo (Ctrl+Z)" onclick=${undo}>↶</button>
+        <button class=${() => (canRedo() ? 'seg' : 'seg dim')} title="redo (Ctrl+Shift+Z)" onclick=${redo}>↷</button>
       </div>
       <div class="grp">
         <button class="seg" title="open an OSJS project file" onclick=${() => openInput.click()}>open</button>
