@@ -133,6 +133,9 @@
     .fp-body { padding: 8px; overflow: auto; min-height: 0; }
     .fp-body .tablebox { gap: 6px; height: auto; }
     .fp-body .thead-row { flex-wrap: wrap; }
+    .fp-resize { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none; }
+    .fp-resize::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px;
+                        border-right: 2px solid var(--ink-faint); border-bottom: 2px solid var(--ink-faint); }
     /* data table tab */
     .tablewrap { align-items: stretch; justify-content: flex-start; padding: 14px; }
     .tablebox { display: flex; flex-direction: column; gap: 8px; width: 100%; height: 100%; min-height: 0; }

@@ -47,9 +47,20 @@ projection view.
 
 **Overlay layer (OSJS-owned; bearing stays the plot engine):** abs-positioned,
 draggable elements over the net; repositioned on rotation. Element types, growing:
-- **annotations** (first/smallest — build the overlay with these)
-- **table-on-plot** (float the selected layer's table; draggable / minimise / close)
-- **legend**, **title/caption**, **scale/north decorations**
+- **annotations** ✓ (built: draggable, multi-space, leader+arrow, locks, background)
+- **table-on-plot** ✓ (built: float a layer's table; drag / minimise / close / resize;
+  per-table edit; figure-space, rotation-fixed; config in item params, persists)
+- **legend**, **title/caption**, **scale/north decorations** (next decorations)
+
+**Preview / print mode** (overlay-wide — every element, plus the figure chrome):
+a toggle that turns the workspace from *interactive* to *presentation*: hide drag
+handles, resize grips, edit buttons, selection outlines, the engineering-grid
+background, panel/gutter chrome — leaving the camera-ready figure (net + data +
+annotations + tables-as-clean-boxes + legend/title). The same render at higher
+fidelity is the print / export path (→ "Export polish" in dessert). Each overlay
+element needs a "presented" styling variant (e.g. a floating table becomes a plain
+bordered box, no title-bar buttons). Consider a dedicated print stylesheet +
+`window.print()` for true paper output, and a page/figure frame to compose within.
 
 **Annotation coordinate spaces** (per anchor AND leader, independently):
 - **attitude** [trend, plunge] — sticks to a direction, moves with rotation.

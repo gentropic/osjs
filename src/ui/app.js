@@ -749,13 +749,17 @@ export function mountApp(root) {
     else legendHost.replaceChildren();
   });
   // ── data table (selected item) with toggleable edit mode ──
-  const [tableEdit, setTableEdit] = signal(false);
+  // edit mode is PER TABLE (tab + each floating panel toggle independently),
+  // keyed by item id so toggling one doesn't flip the rest
+  const [editSet, setEditSet] = signal(new Set());
+  const isEditing = (id) => editSet().has(id);
+  const toggleEditing = (id) => { const s = new Set(editSet()); s.has(id) ? s.delete(id) : s.add(id); setEditSet(s); };
   const [tableVer, setTableVer] = signal(0);
   const bumpTable = () => setTableVer((v) => v + 1);
   const tableHost = document.createElement('div');
   // Rebuilds on selection / edit-mode / structural change only — cell edits write
   // through to the model (read untracked here) so they don't rebuild + lose focus.
-  effect(() => { tableVer(); const it = selected(); const tabular = it && !isGroup(it) && it.type !== 'annotation'; tableHost.replaceChildren(tabular ? dataTable(it, tableEdit()) : h`<div class="muted">${() => { const s = selected(); return isGroup(s) ? 'groups have no data table' : s && s.type === 'annotation' ? 'annotations have no data table' : 'no dataset selected'; }}</div>`); });
+  effect(() => { tableVer(); const it = selected(); const tabular = it && !isGroup(it) && it.type !== 'annotation'; tableHost.replaceChildren(tabular ? dataTable(it, isEditing(it.id)) : h`<div class="muted">${() => { const s = selected(); return isGroup(s) ? 'groups have no data table' : s && s.type === 'annotation' ? 'annotations have no data table' : 'no dataset selected'; }}</div>`); });
   function dataTable(item, edit, inPanel) {
     const geom = item.constructor.GEOM || ['a', 'b'];
     const cols = item.currentColumns();
@@ -788,7 +792,7 @@ export function mountApp(root) {
       <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
         ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
-        <button class=${() => (tableEdit() ? 'btn on' : 'btn')} onclick=${() => setTableEdit((v) => !v)}>edit</button></div>
+        <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button></div>
       <div class="tscroll"><div class="dtable" style=${{ gridTemplateColumns: grid }}>${cells}</div></div>
     </div>`;
   }
@@ -942,7 +946,7 @@ export function mountApp(root) {
   const PANEL_POS = [0.28, 0.96];                                      // default top-left, figure coords
   function dragPanel(e, item, panel) {
     if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();                                               // let it bubble to the panel's click-to-select
     const cap = e.currentTarget; cap.setPointerCapture?.(e.pointerId); overlayDragging = true;
     const r0 = net.element.getBoundingClientRect();
     const offX = e.clientX - r0.left - px(panel.style.left), offY = e.clientY - r0.top - px(panel.style.top);
@@ -960,22 +964,48 @@ export function mountApp(root) {
     };
     cap.addEventListener('pointermove', move); cap.addEventListener('pointerup', up);
   }
+  // resize from the bottom-right corner; commits width/height to params on release
+  function resizePanel(e, item, panel) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const cap = e.currentTarget; cap.setPointerCapture?.(e.pointerId); overlayDragging = true;
+    const body = panel.querySelector('.fp-body');
+    const x0 = e.clientX, y0 = e.clientY, w0 = panel.offsetWidth, h0 = body ? body.offsetHeight : 0;
+    let w = w0, hh = h0;
+    const move = (ev) => {
+      w = Math.max(150, w0 + (ev.clientX - x0)); panel.style.width = `${w}px`;
+      if (body) { hh = Math.max(60, h0 + (ev.clientY - y0)); body.style.height = `${hh}px`; }
+    };
+    const up = () => {
+      cap.removeEventListener('pointermove', move); cap.removeEventListener('pointerup', up);
+      overlayDragging = false;
+      item.setParams({ tableW: Math.round(w), tableH: body ? Math.round(hh) : item.currentParams().tableH });
+    };
+    cap.addEventListener('pointermove', move); cap.addEventListener('pointerup', up);
+  }
   function buildPanel(item) {
     const pr = item.currentParams(), pos = pr.tablePos || PANEL_POS, min = !!pr.tableMin;
     const p = net.place('figure', pos[0], pos[1]);
     const panel = document.createElement('div');
     panel.dataset.panel = item.id;
-    panel.className = `floatpanel${selected() === item ? ' sel' : ''}${min ? ' min' : ''}`;
+    panel.className = `floatpanel${min ? ' min' : ''}`;                 // .sel maintained by a separate effect (no rebuild on select)
     panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`; panel.style.width = `${pr.tableW || 300}px`;
+    panel.addEventListener('pointerdown', () => setSelected(item));     // click anywhere → select this layer
     const bar = h`<div class="fp-bar">
       <span class="fp-title">${item.currentName()}</span>
       <span class="fp-actions">
         <button class="fp-btn" title=${min ? 'expand' : 'minimise'} onclick=${() => { item.setParams({ tableMin: !min }); bumpTable(); }}>${min ? '▸' : '▾'}</button>
         <button class="fp-btn" title="close" onclick=${() => { item.setParams({ tableOpen: false }); bumpTable(); }}>×</button>
       </span></div>`;
-    bar.addEventListener('pointerdown', (ev) => { if (ev.target.closest('.fp-btn')) return; setSelected(item); dragPanel(ev, item, panel); });
+    bar.addEventListener('pointerdown', (ev) => { if (ev.target.closest('.fp-btn')) return; dragPanel(ev, item, panel); });
     panel.append(bar);
-    if (!min) { const body = document.createElement('div'); body.className = 'fp-body'; body.append(dataTable(item, tableEdit(), true)); panel.append(body); }
+    if (!min) {
+      const body = document.createElement('div'); body.className = 'fp-body';
+      if (pr.tableH) body.style.height = `${pr.tableH}px`;
+      body.append(dataTable(item, isEditing(item.id), true)); panel.append(body);
+      const grip = document.createElement('div'); grip.className = 'fp-resize'; grip.title = 'resize';
+      grip.addEventListener('pointerdown', (ev) => resizePanel(ev, item, panel)); panel.append(grip);
+    }
     return panel;
   }
   function renderPanels() {
@@ -997,9 +1027,11 @@ export function mountApp(root) {
   const repositionOverlay = () => { repositionAnnos(); repositionPanels(); };
   net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
-  // panels rebuild on open/close/min/move/select/name + structural table edits
-  // (tableVer); cell edits write through untracked (like the tab) so they keep focus.
-  effect(() => { selected(); tableVer(); tableEdit(); tabularItems().forEach((it) => { it.params(); it.name(); }); renderPanels(); });
+  // panels rebuild on open/close/min/move/resize/name/edit-mode + structural table
+  // edits (tableVer); cell edits write through untracked (like the tab) so they keep
+  // focus. NOT on selected() — that only re-outlines (separate effect, no rebuild).
+  effect(() => { editSet(); tableVer(); tabularItems().forEach((it) => { it.params(); it.name(); }); renderPanels(); });
+  effect(() => { const s = selected(); for (const el of panelLayer.querySelectorAll('.floatpanel')) el.classList.toggle('sel', !!s && el.dataset.panel === s.id); });
 
   const wraps = {
     net: h`<div class="plotwrap">${net.element}${annoLayer}${panelLayer}${legendHost}</div>`,
