@@ -83,6 +83,41 @@ export function parseTable(text) {
   return { columns, rows };
 }
 
+/**
+ * Serialise a table to TSV (Excel's clipboard format): a header row of the
+ * geometry names + data-column names, then one tab-separated row per measurement.
+ */
+export function tableToTSV(measurements, columns = [], geomNames = []) {
+  const header = [...geomNames, ...columns.map((c) => c.name)];
+  const lines = [header.join('\t')];
+  measurements.forEach((m, i) => lines.push([...m.map((v) => String(v)), ...columns.map((c) => c.values[i] ?? '')].join('\t')));
+  return lines.join('\n');
+}
+
+/**
+ * Merge pasted tabular text (CSV/TSV, e.g. from Excel) into an existing table:
+ * the first `geomLen` columns are the geometry (kept only if all parse as finite
+ * numbers); remaining columns are data, unioned with the current columns by name
+ * (existing rows get '' for newly-introduced columns). Returns the combined
+ * { measurements, columns } plus how many rows were `added` (0 = nothing usable).
+ */
+export function mergeTableText(curMeas, curCols, geomLen, text) {
+  const tbl = parseTable(text);
+  if (!tbl.columns.length) return { measurements: curMeas, columns: curCols, added: 0 };
+  const pastedData = tbl.columns.slice(geomLen);
+  const geomRows = [], keep = [];
+  tbl.rows.forEach((r, i) => { const g = Array.from({ length: geomLen }, (_, k) => parseFloat(r[k])); if (g.every(Number.isFinite)) { geomRows.push(g); keep.push(i); } });
+  if (!geomRows.length) return { measurements: curMeas, columns: curCols, added: 0 };
+  const names = curCols.map((c) => c.name);
+  const finalNames = [...names, ...pastedData.map((c) => c.name).filter((n) => !names.includes(n))];
+  const columns = finalNames.map((name) => {
+    const ex = curCols.find((c) => c.name === name), pd = pastedData.find((c) => c.name === name);
+    const old = ex ? ex.values.slice() : curMeas.map(() => '');
+    return { name, values: [...old, ...keep.map((i) => (pd ? (pd.values[i] ?? '') : ''))] };
+  });
+  return { measurements: [...curMeas, ...geomRows], columns, added: geomRows.length };
+}
+
 // Heuristic: guess which columns hold azimuth and dip/plunge from header names.
 export function guessRoles(columns) {
   const az = columns.findIndex((c) => /dip\s*dir|dipdir|azimuth|strike|trend|^dd$|direction/i.test(c.name));

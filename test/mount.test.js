@@ -628,3 +628,16 @@ test('table: ghost rows let you type a new measurement in place', async () => {
   assert.deepEqual(item.currentMeasurements()[n0], [123, 45], 'both typed cells land in the new row');
 });
 
+test('add-data: committing an empty form creates a blank named layer', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const n0 = project.items().length;
+  root.querySelector('.add').click(); await tick();        // open the add form
+  root.querySelector('.form .ni').value = 'scratch';       // a name, no data
+  root.querySelector('.form .go').click(); await tick();
+  assert.equal(project.items().length, n0 + 1, 'an empty form still adds a layer');
+  const added = project.items()[project.items().length - 1];
+  assert.equal(added.currentName(), 'scratch', 'uses the typed name');
+  assert.equal(added.currentMeasurements().length, 0, 'the layer starts empty (fill via ghost rows / paste)');
+});
+

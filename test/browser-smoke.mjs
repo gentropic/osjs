@@ -32,7 +32,8 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const url = `http://127.0.0.1:${server.address().port}/`;
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+const page = await context.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e.message || e)));
 
@@ -228,6 +229,30 @@ await check('floating panel: ghost rows let you add data without toggling edit',
   assert(n1 === n0 + 1, 'Enter on a ghost row did not append a measurement');
   assert(added[0] === 300 && added[1] === 10, `whole ghost row not committed (got ${added})`);
   await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).setParams({ tableOpen: false }), id);
+});
+
+await check('table copy → clipboard TSV, and paste → appended rows (Excel round-trip)', async () => {
+  // open the layer's table in the tab and enter edit mode (paste lives there)
+  const id = await page.evaluate(() => { const it = window.osjs.project.items().find((x) => x.type !== 'annotation'); window.osjs.select(it); return it.id; });
+  await page.locator('.tabs .tab', { hasText: /table/i }).click();
+  await page.waitForTimeout(40);
+  await page.locator('.tablewrap .thead-row .btn', { hasText: /edit/i }).click();
+  await page.waitForTimeout(40);
+  // copy → the clipboard holds a TSV header + rows
+  await page.locator('.tablewrap .thead-actions .mini', { hasText: /copy/i }).click();
+  await page.waitForTimeout(40);
+  const tsv = await page.evaluate(() => navigator.clipboard.readText());
+  assert(/dip dir\tdip/.test(tsv), `clipboard TSV missing header (got "${tsv.slice(0, 40)}")`);
+  assert(tsv.split('\n').length >= 9, 'TSV should have a header + 8 data rows');
+  // paste a new TSV → rows appended
+  const n0 = await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).currentMeasurements().length, id);
+  await page.evaluate(() => navigator.clipboard.writeText('dip dir\tdip\n45\t12\n50\t15'));
+  await page.locator('.tablewrap .thead-actions .mini', { hasText: /paste/i }).click();
+  await page.waitForTimeout(60);
+  const n1 = await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).currentMeasurements().length, id);
+  assert(n1 === n0 + 2, `paste did not append 2 rows (was ${n0}, now ${n1})`);
+  await page.locator('.tabs .tab', { hasText: /projection/i }).click();   // back to the net for later checks
+  await page.waitForTimeout(40);
 });
 
 await check('legend exports from the scene at real geometry (names + box)', async () => {

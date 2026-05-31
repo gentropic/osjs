@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Project, PlaneSet, PoleSet, LineSet, SmallCircleSet, FaultSet, Annotation, Group, isGroup, serializeProject, loadProject, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../src/core/model.js';
 import { KINDS, greatCircle } from '../src/core/primitives.js';
-import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../src/io/parse.js';
+import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable, tableToTSV, mergeTableText } from '../src/io/parse.js';
 
 test('primitive vocabulary is closed and carries source', () => {
   const p = greatCircle([0, 0, -1], { color: '#f00' }, { item: 'a', datum: 2 });
@@ -189,6 +189,36 @@ test('annotation: content lives in style, emits no plot primitive, round-trips',
 
 test('parseTriples reads trend/plunge/aperture rows', () => {
   assert.deepEqual(parseTriples('120 40 25\n300,10,15\n# c\nbad 1'), [[120, 40, 25], [300, 10, 15]]);
+});
+
+test('tableToTSV: header of geometry + column names, one tab row per measurement', () => {
+  const tsv = tableToTSV([[120, 35], [130, 40]], [{ name: 'unit', values: ['A', 'B'] }], ['dip dir', 'dip']);
+  assert.equal(tsv, 'dip dir\tdip\tunit\n120\t35\tA\n130\t40\tB');
+});
+
+test('mergeTableText: appends pasted rows, geometry from the first N columns', () => {
+  const r = mergeTableText([[120, 35]], [], 2, 'dip dir\tdip\n45\t12\n50\t15');
+  assert.equal(r.added, 2);
+  assert.deepEqual(r.measurements, [[120, 35], [45, 12], [50, 15]]);
+});
+
+test('mergeTableText: unions data columns by name, padding the gaps', () => {
+  // existing has a "unit" column; paste brings "unit" + a new "qual" column
+  const cur = [[120, 35]]; const curCols = [{ name: 'unit', values: ['A'] }];
+  const r = mergeTableText(cur, curCols, 2, 'dip dir\tdip\tunit\tqual\n45\t12\tB\tgood');
+  assert.deepEqual(r.measurements, [[120, 35], [45, 12]]);
+  const unit = r.columns.find((c) => c.name === 'unit'), qual = r.columns.find((c) => c.name === 'qual');
+  assert.deepEqual(unit.values, ['A', 'B']);              // existing value kept, pasted value appended
+  assert.deepEqual(qual.values, ['', 'good']);            // new column: '' for the pre-existing row
+});
+
+test('mergeTableText: into an empty table is effectively a replace; junk geometry → 0 added', () => {
+  const empty = mergeTableText([], [], 2, 'dip dir\tdip\n10\t20\n30\t40');
+  assert.deepEqual(empty.measurements, [[10, 20], [30, 40]]);
+  assert.equal(empty.added, 2);
+  const junk = mergeTableText([[1, 2]], [], 2, 'name\nfoo\nbar');   // single non-numeric column
+  assert.equal(junk.added, 0);
+  assert.deepEqual(junk.measurements, [[1, 2]]);          // unchanged
 });
 
 test('data tools: rotate / merge / difference vectors produce new payloads', () => {

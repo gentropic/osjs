@@ -22,7 +22,7 @@ import { createExport } from '../render/figure-export.js';
 import { createSelection } from './selection.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
-import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
+import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable, tableToTSV, mergeTableText } from '../io/parse.js';
 import { unzip, looksLikeZip } from '../io/zip.js';
 import { parseOpenStereo } from '../io/openstereo.js';
 
@@ -378,52 +378,45 @@ export function mountApp(root) {
       </div>`);
     });
 
+    // Build the item from whatever the form has — and if nothing parses, create an
+    // EMPTY named dataset (you can then type into its ghost rows or paste a sheet).
     const commit = () => {
       const t = type[0]();
       const Cls = ITEM_TYPES[t] || ITEM_TYPES.planes;
       const color = PALETTE[project.items().length % PALETTE.length];
+      const style = { color, width: 1, size: 4 };
       const tbl = table();
       const toDipDir = (m) => (((t === 'planes' || t === 'poles') && conv[0]() === 'strike') ? m.map(([a, d]) => [(a + 90) % 360, d]) : m);
-      let payload;
+      const payload = { measurements: [], style };
       if (t === 'smallcircle') {
-        const triples = parseTriples(ta.value);
-        if (!triples.length) { setAdding(false); return; }
-        payload = { measurements: triples, style: { color, width: 1, size: 4 } };
+        payload.measurements = parseTriples(ta.value);
       } else if (t === 'fault') {
-        const rows = parseFaults(ta.value);
-        if (!rows.length) { setAdding(false); return; }
-        payload = { measurements: rows, style: { color, width: 1, size: 4 } };
+        payload.measurements = parseFaults(ta.value);
       } else if (t === 'lines' && lineInput[0]() === 'rake') {
-        const tr = parseTriples(ta.value);   // [dip dir, dip, rake] → trend/plunge
-        if (!tr.length) { setAdding(false); return; }
         const r1 = (x) => Math.round(x * 10) / 10;
-        const meas = tr.map(([dd, dip, rk]) => conversions.rakeToLine(dd, dip, rk).map(r1));
-        payload = { measurements: meas, style: { color, width: 1, size: 4 } };
+        payload.measurements = parseTriples(ta.value).map(([dd, dip, rk]) => conversions.rakeToLine(dd, dip, rk).map(r1));
       } else if (tbl && tbl.columns.length > 2) {
         const built = buildFromTable(tbl, map);
-        if (!built.measurements.length) { setAdding(false); return; }
-        const style = { color, width: 1, size: 4 };
-        if (map.colorBy >= 0) {
+        payload.measurements = toDipDir(built.measurements);
+        payload.columns = built.columns;
+        if (map.colorBy >= 0 && built.measurements.length) {
           const vals = built.columns[map.colorBy].values;
           const numeric = vals.some((v) => v !== '' && Number.isFinite(parseFloat(v)))
             && vals.every((v) => v === '' || Number.isFinite(parseFloat(v)));
           style.colorMode = numeric ? 'ramp' : 'categorical';
-          // colorBy indexes colorColumns() = geometry columns + data columns
-          style.colorBy = (Cls.GEOM || []).length + map.colorBy;
+          style.colorBy = (Cls.GEOM || []).length + map.colorBy;   // colorBy indexes colorColumns() = geometry + data
           if (numeric) style.colorRamp = 'viridis';
         }
-        payload = { measurements: toDipDir(built.measurements), columns: built.columns, style };
       } else {
-        const pairs = parsePairs(ta.value);
-        if (!pairs.length) { setAdding(false); return; }
-        payload = { measurements: toDipDir(pairs), style: { color, width: 1, size: 4 } };
+        payload.measurements = toDipDir(parsePairs(ta.value));
       }
-      payload.name = nm.value || t;
+      payload.name = nm.value.trim() || t;
       setSelected(project.add(new Cls(payload)));
       setAdding(false);
     };
     return h`<div class="form"><div class="frow">${typeSel}${nm}</div>
       ${fileIn}${ta}${optsHost}${mapHost}
+      <div class="fhint">paste CSV/TSV from Excel above · or leave it empty to start a blank layer and type / paste rows later</div>
       <div class="frow"><button class="go" onclick=${commit}>add</button>
       <button onclick=${() => setAdding(false)}>cancel</button></div></div>`;
   }
@@ -825,6 +818,21 @@ export function mountApp(root) {
     const delRow = (i) => { item.setMeasurements(item.currentMeasurements().filter((_, j) => j !== i)); item.setColumns(item.currentColumns().map((co) => ({ name: co.name, values: co.values.filter((_, j) => j !== i) }))); bumpTable(); };
     const delCol = (ci) => { item.setColumns(item.currentColumns().filter((_, j) => j !== ci)); bumpTable(); };
     const cell = (val, onInput) => edit ? h`<input class="tc" value=${val} oninput=${(e) => onInput(e.target.value)}>` : h`<span>${val}</span>`;
+    // copy the whole table to the clipboard as TSV (paste straight into Excel)
+    const copyTable = async () => {
+      const tsv = tableToTSV(item.currentMeasurements(), item.currentColumns(), geom);
+      try { await navigator.clipboard.writeText(tsv); setNotice('table copied — paste into a spreadsheet'); }
+      catch { setNotice('copy failed — clipboard blocked'); }
+    };
+    // paste CSV/TSV from the clipboard → append rows (first geom.length cols = geometry)
+    const pasteTable = async () => {
+      let txt = '';
+      try { txt = await navigator.clipboard.readText(); } catch { setNotice('paste failed — allow clipboard access'); return; }
+      const r = mergeTableText(item.currentMeasurements(), item.currentColumns(), geom.length, txt);
+      if (!r.added) { setNotice('nothing tabular on the clipboard'); return; }
+      item.setMeasurements(r.measurements); item.setColumns(r.columns); bumpTable();
+      setNotice(`pasted ${r.added} row${r.added > 1 ? 's' : ''}`);
+    };
 
     // per-column widths (px, by slot index over geom+data cols) live in params so
     // they persist; absent = a flexible default track. Build the grid from them.
@@ -923,7 +931,8 @@ export function mountApp(root) {
       <div class="thead-row">
         <span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         <span class="thead-actions">
-          ${edit ? h`<button class="mini" onclick=${addRow}>＋ row</button><button class="mini" onclick=${addCol}>＋ col</button>` : ''}
+          ${edit ? h`<button class="mini" onclick=${addRow}>＋ row</button><button class="mini" onclick=${addCol}>＋ col</button><button class="mini" title="paste rows from the clipboard (CSV/TSV, e.g. Excel)" onclick=${pasteTable}>paste</button>` : ''}
+          <button class="mini" title="copy the table as TSV (paste into Excel)" onclick=${copyTable}>copy</button>
           ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
           <button class=${() => (isEditing(item.id) ? 'btn on' : 'btn')} onclick=${() => toggleEditing(item.id)}>edit</button>
         </span></div>
