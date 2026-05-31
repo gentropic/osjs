@@ -290,6 +290,20 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   assert.equal(handle.project.items().at(-1).type, 'annotation');
 });
 
+test('add title: ＋ title creates a prominent figure-space text annotation', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const n0 = handle.project.items().length;
+  [...root.querySelectorAll('.sectbtn')].find((b) => /title/i.test(b.textContent)).click();
+  await tick();
+  assert.equal(handle.project.items().length, n0 + 1, 'a layer is added');
+  const t = handle.project.items().at(-1);
+  assert.equal(t.type, 'annotation');
+  assert.equal(t.currentStyle().bold, true, 'bold');
+  assert.ok((t.currentStyle().fontSize || 0) >= 20, 'large font');
+  assert.equal(t.currentStyle().anchorSpace, 'figure', 'figure-anchored (fixed under rotation)');
+});
+
 test('context menu: plot Legend toggle flips project.legendShow', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);

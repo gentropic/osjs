@@ -108,6 +108,7 @@
     .anno-label.under { opacity: .4; }   /* anchor on the hidden hemisphere */
     .anno-label.box { border: 1px solid var(--line-2); box-shadow: 0 1px 3px rgba(40,55,75,.12); }
     .anno-label.locked { cursor: default; }
+    .anno-label.editing { cursor: text; background: var(--panel-2); box-shadow: 0 0 0 1px var(--cyan); outline: none; white-space: pre-wrap; }
     /* generous invisible hit target; the visible dot (::after) reveals on hover / when selected */
     .anno-handle { position: absolute; transform: translate(-50%, -50%); width: 20px; height: 20px; pointer-events: auto; cursor: move; z-index: 2; }
     .anno-handle::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -207,11 +208,6 @@
     .decorlayer { position: absolute; pointer-events: none; z-index: 2; overflow: visible; }
     .netlegend { position: absolute; max-width: 60%; pointer-events: auto; cursor: move; }
     .netlegend.sel { outline: 1px dashed var(--cyan); outline-offset: 2px; }
-    .nettitle { position: absolute; pointer-events: auto; cursor: move; max-width: 80%; padding: 2px 6px; border-radius: 4px;
-                font-weight: 600; font-size: 17px; letter-spacing: .01em; color: var(--ink); }
-    .nettitle:hover { background: color-mix(in srgb, var(--panel) 60%, transparent); }
-    .nettitle-text { outline: none; white-space: pre-wrap; }
-    .nettitle-text[contenteditable="true"] { cursor: text; box-shadow: 0 0 0 1px var(--cyan); border-radius: 3px; padding: 0 2px; }
     .lg { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; font-size: 11px;
           background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
           border-radius: 6px; box-shadow: 0 1px 6px rgba(40,55,75,.10); backdrop-filter: blur(2px); }

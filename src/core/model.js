@@ -406,11 +406,10 @@ export class Project {
     mk('gridSpacing', 10);          // net great/small-circle grid spacing (degrees)
     mk('hemisphere', 'lower');      // 'lower' | 'upper'
     mk('contourMethod', 'fisher');
-    // composition decorations (figure-space positions, [u,v] ~ −1..1 about centre)
+    // legend decoration (figure-space [u,v] ~ −1..1 about centre). The figure title
+    // is just a text annotation (full inspector), not a bespoke decoration.
     mk('legendShow', true);
     mk('legendPos', [-0.98, -0.62]);  // lower-left
-    mk('title', '');
-    mk('titlePos', [-0.98, 0.98]);    // upper-left
   }
 
   get roseSettings() { return { binWidth: this.roseBinWidth(), scale: this.roseScale(), petal: this.rosePetalStyle(), mean: this.roseMean() }; }
@@ -523,8 +522,6 @@ export function serializeProject(project) {
     hemisphere: project.hemisphere(),
     legendShow: project.legendShow(),
     legendPos: project.legendPos(),
-    title: project.title(),
-    titlePos: project.titlePos(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -550,8 +547,6 @@ export function loadProject(project, data) {
   if (data.hemisphere) project.setHemisphere(data.hemisphere);
   if (data.legendShow != null) project.setLegendShow(data.legendShow);
   if (data.legendPos) project.setLegendPos(data.legendPos);
-  if (data.title != null) project.setTitle(data.title);
-  if (data.titlePos) project.setTitlePos(data.titlePos);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;

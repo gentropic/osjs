@@ -728,15 +728,8 @@ export function mountApp(root) {
   const legendHost = document.createElement('div');
   legendHost.className = 'netlegend';
   legendHost.addEventListener('pointerdown', (e) => dragDecor(e, 'legendPos', legendHost));
-  legendHost.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, decorMenu('legend')); });
-  const titleHost = document.createElement('div'); titleHost.className = 'nettitle';
-  const titleText = document.createElement('div'); titleText.className = 'nettitle-text';
-  titleHost.append(titleText);
-  titleHost.addEventListener('pointerdown', (e) => { if (titleText.isContentEditable) return; dragDecor(e, 'titlePos', titleHost); });
-  titleHost.addEventListener('dblclick', () => { titleText.contentEditable = 'true'; titleText.focus(); });
-  titleText.addEventListener('blur', () => { titleText.contentEditable = 'false'; project.setTitle(titleText.textContent.trim()); });
-  titleHost.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, decorMenu('title')); });
-  decorLayer.append(legendHost, titleHost);
+  legendHost.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, decorMenu()); });
+  decorLayer.append(legendHost);
   function rampBar(lg) {
     const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color.sampleScale(lg.ramp, lg.reverse ? 1 - t : t));
     return h`<div class="lgramp"><span class="lgname">${lg.column}</span>
@@ -767,8 +760,7 @@ export function mountApp(root) {
   effect(() => {
     const vis = project.visibleLeaves().filter((it) => it.type !== 'annotation');
     legendHost.replaceChildren(...(vis.length ? [h`<div class="lg">${vis.map(legendRow)}</div>`] : []));
-    if (titleText.textContent !== project.title()) titleText.textContent = project.title();   // don't clobber a live edit
-    project.legendShow(); project.legendPos(); project.titlePos();   // subscribe → reposition on change
+    project.legendShow(); project.legendPos();   // subscribe → reposition on change
     repositionDecor();
   });
   // ── data table (selected item) with toggleable edit mode ──
@@ -904,7 +896,7 @@ export function mountApp(root) {
   // coord on release. refreshLeader keeps line + arrow following the moved end.
   function dragPoint(e, a, el, which) {
     const st = a.style();
-    if (e.button !== 0 || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
+    if (e.button !== 0 || el.isContentEditable || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
     e.preventDefault(); e.stopPropagation(); el.setPointerCapture?.(e.pointerId);
     overlayDragging = true;                                 // freeze rebuilds so this captured element isn't replaced mid-drag
     const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude'; let coords = null;
@@ -950,9 +942,6 @@ export function mountApp(root) {
     const showLeg = project.legendShow() && project.visibleLeaves().some((it) => it.type !== 'annotation');
     legendHost.style.display = showLeg ? '' : 'none';
     if (showLeg) { const p = net.place('figure', ...project.legendPos()); legendHost.style.left = `${p.x}px`; legendHost.style.top = `${p.y}px`; }
-    const hasTitle = !!project.title();
-    titleHost.style.display = hasTitle ? '' : 'none';
-    if (hasTitle) { const p = net.place('figure', ...project.titlePos()); titleHost.style.left = `${p.x}px`; titleHost.style.top = `${p.y}px`; }
   }
   // ── linked identify / brushing (table ⇄ plot) ──
   // hover a row → ring on the net at that datum; click a datum → flash its row(s).
@@ -1010,8 +999,30 @@ export function mountApp(root) {
     setSelected(copy);
   }
   function addAnnotationAt(t, p) {
-    setSelected(project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [Math.round(t), Math.round(p)], anchorSpace: 'attitude' } })));
+    const a = project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [Math.round(t), Math.round(p)], anchorSpace: 'attitude' } }));
+    setSelected(a); pendingEdit = a.id;                 // drop straight into inline edit
   }
+  // a title is just a prominent, figure-anchored text annotation (full inspector,
+  // inline edit, persistence — all for free)
+  function addTitle() {
+    const a = project.add(new ITEM_TYPES.annotation({ name: 'title', style: { color: '#1d2733', fontSize: 24, bold: true, text: 'Title', anchor: [0, 0.9], anchorSpace: 'figure' } }));
+    setActiveTab('net'); setSelected(a); pendingEdit = a.id;
+  }
+  // inline edit of an annotation label: double-click (or auto on create) → editable
+  let pendingEdit = null;
+  function startEdit(a, el) {
+    overlayDragging = true;                              // freeze rebuilds while editing
+    el.contentEditable = 'true'; el.classList.add('editing'); el.focus();
+    if (typeof getSelection === 'function') { try { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } catch { /* no selection api */ } }
+    const finish = () => {
+      el.removeEventListener('blur', finish); el.removeEventListener('keydown', onKey);
+      el.contentEditable = 'false'; el.classList.remove('editing'); overlayDragging = false;
+      a.setStyle({ ...a.currentStyle(), text: el.textContent.trim() || 'note' });   // commit → rebuild
+    };
+    const onKey = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); el.blur(); } else if (ev.key === 'Escape') { ev.preventDefault(); el.textContent = a.currentStyle().text || 'note'; el.blur(); } };
+    el.addEventListener('blur', finish); el.addEventListener('keydown', onKey);
+  }
+  const editAnno = (a) => { const el = annoLayer.querySelector(`[data-anno-label="${a.id}"]`); if (el) startEdit(a, el); else pendingEdit = a.id; };
   function itemMenu(item) {
     const open = !!item.currentParams().tableOpen;
     return [
@@ -1055,7 +1066,7 @@ export function mountApp(root) {
   function annoMenu(a) {
     const st = a.currentStyle();
     return [
-      { label: 'Edit text…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Annotation text', st.text || '') : null; if (t != null) setAnno(a, { text: t }); } },
+      { label: 'Edit text', onClick: () => editAnno(a) },
       { label: 'Bold', checked: !!st.bold, onClick: () => setAnno(a, { bold: !a.currentStyle().bold }) },
       { label: 'Background box', checked: !!st.box, onClick: () => setAnno(a, { box: !a.currentStyle().box }) },
       { separator: true },
@@ -1085,16 +1096,10 @@ export function mountApp(root) {
     const w = []; for (let i = 0; i < n; i++) { const th = dt.querySelector(`.th[data-col="${i}"]`); w[i] = th ? Math.max(40, Math.ceil(th.getBoundingClientRect().width) + 2) : 80; }
     item.setParams({ tableColW: w }); bumpTable();
   }
-  function decorMenu(which) {
-    if (which === 'legend') return [
+  function decorMenu() {
+    return [
       { label: 'Hide legend', onClick: () => project.setLegendShow(false) },
       { label: 'Reset position', onClick: () => project.setLegendPos([-0.98, -0.62]) },
-    ];
-    return [
-      { label: 'Edit title…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Figure title', project.title()) : null; if (t != null) project.setTitle(t.trim()); } },
-      { label: 'Reset position', onClick: () => project.setTitlePos([-0.98, 0.98]) },
-      { separator: true },
-      { label: 'Remove title', danger: true, onClick: () => project.setTitle('') },
     ];
   }
   function panelMenu(item) {
@@ -1128,7 +1133,7 @@ export function mountApp(root) {
       items.push({ separator: true });
     }
     items.push({ label: 'Legend', checked: project.legendShow(), onClick: () => project.setLegendShow(!project.legendShow()) });
-    items.push({ label: project.title() ? 'Edit title…' : 'Add title…', onClick: () => { const t = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Figure title', project.title()) : null; if (t != null) project.setTitle(t.trim()); } });
+    items.push({ label: 'Add title', onClick: () => addTitle() });
     items.push({ label: 'Reset orientation', onClick: () => net.resetView() });
     openMenu(clientX, clientY, items);
   };
@@ -1149,8 +1154,10 @@ export function mountApp(root) {
       if (st.box) { el.classList.add('box'); el.style.background = st.bgColor || '#ffffff'; }
       el.textContent = st.text || 'note';
       el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+      el.ondblclick = (ev) => { ev.stopPropagation(); startEdit(a, el); };
       el.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); setSelected(a); openMenu(ev.clientX, ev.clientY, annoMenu(a)); };
       el.addEventListener('pointerdown', (ev) => dragPoint(ev, a, el, 'anchor'));
+      if (pendingEdit === a.id) { pendingEdit = null; (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : setTimeout)(() => startEdit(a, el)); }
       return { a, st, el };
     });
     annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el));   // append labels first so they're measurable
@@ -1393,7 +1400,8 @@ export function mountApp(root) {
     <div class="body">
       <aside class="side">
         <div class="sect">data <span class="count">${() => project.items().length}</span>
-          <button class="sectbtn" title="add a text annotation" onclick=${() => setSelected(project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [0, 90] } })))}>＋ note</button>
+          <button class="sectbtn" title="add a text annotation (double-click on the plot to edit)" onclick=${() => { const a = project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [0, 90] } })); setActiveTab('net'); setSelected(a); pendingEdit = a.id; }}>＋ note</button>
+          <button class="sectbtn" title="add a figure title" onclick=${() => addTitle()}>＋ title</button>
           <button class="sectbtn" title="add a group" onclick=${() => setSelected(project.addGroup('group'))}>＋ group</button></div>
         <div class="list" ondragover=${(e) => { if (dragNode) e.preventDefault(); }} ondrop=${(e) => { e.preventDefault(); if (dragNode) { project.move(dragNode, null, project.nodes().length); dragNode = null; } }}>${list}</div>
         ${addHost}
