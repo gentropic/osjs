@@ -64,6 +64,55 @@ Selection precursor (shares hit-testing via sn.project + per-datum highlight).
 **Quick win, independent:** rgb colour-by mode (read literal colours from a column)
 — `_colorFn` already maps per datum; just return the cell value.
 
+## Plot viewport — pan & zoom (infrastructure)
+
+Today the net is fixed in size and position. The plot area is *both* a data-analysis
+surface and a composition canvas, so it should pan and zoom — magnify a dense cluster
+to pick it apart, or push the net aside to lay out a figure.
+
+**Key distinction — two orthogonal transforms:**
+- **Rotation (sphere orientation)** — the arcball, already built. Changes the
+  *projection* (what's where on the net).
+- **Viewport (camera over the canvas)** — a 2D affine (translate + uniform scale)
+  applied *after* projection. Pure view; changes **no** projection/stats math. This
+  is the new piece.
+Keeping them separate matters: zooming must not touch the geology, and "reset
+orientation" (just shipped) stays distinct from a new "reset/fit view" (zoom+pan).
+
+**What it unlocks:**
+- *Analysis*: zoom into a tight cluster / girdle to disambiguate overlapping points;
+  pan to inspect the margin of a dense contour.
+- *Composition*: treat the area as free canvas — net off to one side, tables/legend/
+  title arranged around it (feeds the map-composer). A pannable/zoomable canvas is
+  the natural substrate that could eventually host **multiple** nets/rose/fabric.
+
+**Architecture:**
+- Apply the viewport as a wrapping `<g transform="translate() scale()">` (or SVG
+  `viewBox` manipulation) — likely a small bearing addition (`setViewport`/`viewport`)
+  so the engine owns one transform; host drives it. Rotation stays in the projection
+  pipeline, untouched.
+- **Overlay must compose with it.** `place()`/`locate()` currently map via `sn.project`
+  + `k = svgWidth/sn.size`; with a viewport they must fold in (tx,ty,scale) so
+  annotations, leader handles, and floating tables track under zoom/pan. Cleanest:
+  thread the viewport through place/locate (and the annolayer positioning) rather than
+  CSS-transforming the overlay separately (keeps hit-tests exact).
+- **Stroke/scale policy**: decide what scales vs stays constant — `vector-effect:
+  non-scaling-stroke` for grid/great-circles + constant-size point markers & text is
+  usually what you want (zoom reveals *spatial* separation, not fatter lines).
+- **Interaction bindings** (the crowded part): wheel = zoom-to-cursor; pan via
+  middle-drag or space-drag (design-tool convention) or a dedicated pan affordance.
+  Must coexist with select-drag, measure-drag, and Alt-rotate — pick non-conflicting
+  gestures (wheel is free; space-drag is free). A "fit" / "reset view" control +
+  shortcut alongside the ⟲ reset-orientation button.
+
+**Phasing**: P1 = wheel-zoom-to-cursor + space/middle-drag pan + fit/reset, overlay
+composing correctly, non-scaling strokes. P2 = composer-grade free canvas (and the
+multi-plot question — one zoomable canvas vs per-space viewports).
+
+**Open questions**: per-tab viewport (net vs rose vs fabric) or shared? Persist
+viewport in the project file (likely yes, it's part of a saved figure)? Does the
+map-composer want one big canvas hosting several plots, or stays one-plot-per-tab?
+
 ## Optional dessert
 - Richer **markdown** in annotations (bold/italic/code, multiline) — currently plain.
 - **Export polish**: legend + title/caption baked into SVG/PNG output.
