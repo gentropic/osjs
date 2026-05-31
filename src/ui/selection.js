@@ -13,7 +13,7 @@
  *   mode / selCombine are getters; onSelect = setSelected.
  */
 
-export function createSelection({ net, project, conversions, vec3, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect }) {
+export function createSelection({ net, project, conversions, vec3, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {} }) {
   const [selection, setSelection] = signal(new Map());
   const selLayer = document.createElement('div'); selLayer.className = 'sellayer';
   const selSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); selSvg.setAttribute('class', 'sel-svg'); selLayer.append(selSvg);
@@ -106,12 +106,43 @@ export function createSelection({ net, project, conversions, vec3, signal, effec
     for (const it of selItems()) { const n = it.dcos().length, cur = sel.get(it.id) || new Set(), inv = new Set(); for (let i = 0; i < n; i++) if (!cur.has(i)) inv.add(i); if (inv.size) next.set(it.id, inv); }
     setSelection(next);
   }
+  // tag the selection into a categorical 'set' column + colour by it (the manual
+  // complement to auto k-means clustering). Tagging different subsets builds classes.
+  function tagSelection(value) {
+    const v = (value || '').trim(); const sel = selection(); if (!v || !selCount()) return;
+    for (const it of selItems()) {
+      const idx = sel.get(it.id); if (!idx || !idx.size) continue;
+      const cols = it.currentColumns().map((c) => ({ name: c.name, values: c.values.slice() }));
+      let si = cols.findIndex((c) => c.name === 'set');
+      if (si < 0) { cols.push({ name: 'set', values: it.currentMeasurements().map(() => '') }); si = cols.length - 1; }
+      for (const i of idx) cols[si].values[i] = v;
+      it.setColumns(cols);
+      it.setStyle({ ...it.currentStyle(), colorMode: 'categorical', colorBy: (it.constructor.GEOM || []).length + si });
+    }
+  }
+  // pooled orientation stats on just the selected directions → footer read-out
+  function statsSelection() {
+    const sel = selection(), dc = [];
+    for (const it of selItems()) { const idx = sel.get(it.id); if (!idx) continue; const ds = it.dcos(); for (const i of idx) if (ds[i]) dc.push(ds[i]); }
+    if (dc.length < 2) { notify(`selection n=${dc.length} — need ≥2 for stats`); return; }
+    const pa = statistics.principalAxes(dc), f = statistics.fisherStats(dc), [t, p] = conversions.dcosToLine(f.mean);
+    const a3 = (x) => String(((Math.round(x) % 360) + 360) % 360).padStart(3, '0'), p2 = (x) => String(Math.round(x)).padStart(2, '0');
+    notify(`selection n=${dc.length} · mean ${a3(t)}/${p2(p)} · S ${pa.eigenvalues.map((x) => x.toFixed(2)).join(' ')} · κ ${f.kappa.toFixed(1)}`);
+  }
   const selBar = document.createElement('span');
   selBar.className = 'measurebar';
   effect(() => {
     const n = selCount();
-    selBar.replaceChildren(...(n ? [h`<span class="selcount">${n} selected</span><button class="mini" onclick=${extractSelection}>extract →</button><button class="mini" onclick=${invertSelection}>invert</button><button class="mini" onclick=${clear}>clear</button>`] : []));
+    if (!n) { selBar.replaceChildren(); return; }
+    const tagIn = document.createElement('input'); tagIn.className = 'tagin'; tagIn.placeholder = 'tag…'; tagIn.title = 'tag the selection as a category (→ categorical colour-by)';
+    const apply = () => { tagSelection(tagIn.value); };
+    tagIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    selBar.replaceChildren(
+      h`<span class="selcount">${n} selected</span>`,
+      tagIn,
+      h`<button class="mini" onclick=${apply}>tag</button><button class="mini" onclick=${statsSelection}>stats</button><button class="mini" onclick=${extractSelection}>extract →</button><button class="mini" onclick=${invertSelection}>invert</button><button class="mini" onclick=${clear}>clear</button>`,
+    );
   });
 
-  return { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, clear, render: renderSelection };
+  return { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, tagSelection, statsSelection, clear, render: renderSelection };
 }

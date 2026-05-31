@@ -355,6 +355,19 @@ test('selection: select data then extract → new layer(s), and clears', async (
   assert.equal(after, 0, 'extract clears the selection');
 });
 
+test('tag-to-set: tagging the selection writes a categorical "set" column + colour-by', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const it = handle.project.items().find((x) => x.type === 'poles' || x.type === 'planes');
+  // select all of one layer, then tag
+  handle.commitSelection(() => true);
+  handle.tagSelection('A');
+  const col = it.currentColumns().find((c) => c.name === 'set');
+  assert.ok(col, 'a "set" column was created');
+  assert.ok(col.values.some((v) => v === 'A'), 'selected rows tagged "A"');
+  assert.equal(it.currentStyle().colorMode, 'categorical', 'item now colours categorically');
+});
+
 test('preview mode: the toggle adds/removes body.preview', async () => {
   const root = document.createElement('div');
   mountApp(root);

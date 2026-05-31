@@ -91,8 +91,8 @@ export function mountApp(root) {
   effect(() => { net.render(); rose.render(); fabric.render(); });
 
   // data selection (lasso/cone/rect → highlight + extract); see ui/selection.js
-  const { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, clear: clearSelection, render: renderSelection } =
-    createSelection({ net, project, conversions, vec3, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected });
+  const { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, tagSelection, statsSelection, clear: clearSelection, render: renderSelection } =
+    createSelection({ net, project, conversions, vec3, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m) });
 
   // ── persistence + undo/redo history ──
   // The reactive effect below fires on any project change; it autosaves and, after
@@ -1189,6 +1189,7 @@ export function mountApp(root) {
     if (selCount()) {
       items.push({ label: `Selection (${selCount()})`, submenu: [
         { label: 'Extract → new layer', onClick: extractSelection },
+        { label: 'Stats (pooled)', onClick: statsSelection },
         { label: 'Invert', onClick: invertSelection },
         { label: 'Clear', onClick: clearSelection },
       ] });
@@ -1563,5 +1564,5 @@ export function mountApp(root) {
     const saved = JSON.parse(lsGet(LAYOUT_KEY) || 'null'); const body = app.querySelector('.body');
     if (saved && body) { if (saved.side) body.style.setProperty('--side-w', saved.side); if (saved.insp) body.style.setProperty('--insp-w', saved.insp); }
   } catch { /* ignore */ }
-  return { project, net, rose, fabric, select: setSelected, composeFigureSVG, nativeFigure, selection, commitSelection, extractSelection };
+  return { project, net, rose, fabric, select: setSelected, composeFigureSVG, nativeFigure, selection, commitSelection, extractSelection, tagSelection, statsSelection };
 }

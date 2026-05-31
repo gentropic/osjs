@@ -80,6 +80,29 @@ await check('extract turns the selection into a new layer + clears', async () =>
   assert(await selCount() === 0, 'selection not cleared after extract');
 });
 
+await check('tag-to-set: lasso then tag → categorical "set" column', async () => {
+  await page.locator('header button[title^="lasso"]').click();
+  const b = await netBox();
+  await page.mouse.move(b.x - 12, b.y - 12); await page.mouse.down();
+  await page.mouse.move(b.x + b.w + 12, b.y - 12); await page.mouse.move(b.x + b.w + 12, b.y + b.h + 12);
+  await page.mouse.move(b.x - 12, b.y + b.h + 12); await page.mouse.move(b.x - 12, b.y - 12); await page.mouse.up();
+  await page.waitForTimeout(40);
+  const tagged = await page.evaluate(() => {
+    window.osjs.tagSelection('set-A');
+    return window.osjs.project.items().some((it) => (it.currentColumns?.() || []).some((c) => c.name === 'set' && c.values.includes('set-A')) && it.currentStyle().colorMode === 'categorical');
+  });
+  assert(tagged, 'no layer got a categorical set-A tag');
+  await page.evaluate(() => window.osjs.commitSelection(() => false));   // clear
+});
+
+await check('stats-on-selection reports a footer read-out', async () => {
+  await page.evaluate(() => { window.osjs.commitSelection(() => true); window.osjs.statsSelection(); });
+  await page.waitForTimeout(60);   // the footer text is reactive (microtask flush)
+  const txt = await page.evaluate(() => document.querySelector('.statusbar .cur')?.textContent || '');
+  assert(/selection n=\d+/.test(txt), `stats read-out missing (got "${txt}")`);
+  await page.evaluate(() => window.osjs.commitSelection(() => false));
+});
+
 await check('cone selects data by drag', async () => {
   await page.locator('header button[title^="cone"]').click();
   const b = await netBox();
