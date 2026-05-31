@@ -782,10 +782,12 @@ export function mountApp(root) {
     const colResize = (e, slot) => {            // drag a header grip → set that column's width
       if (e.button !== 0) return; e.preventDefault();
       const grip = e.currentTarget, dtable = grip.closest('.dtable'), th = grip.closest('.th'); if (!dtable || !th) return;
-      const startW = th.offsetWidth, x0 = e.clientX;
+      const startW = th.offsetWidth, x0 = e.clientX; let moved = false;
       grip.setPointerCapture?.(e.pointerId); overlayDragging = true;
-      const move = (ev) => { work[slot] = Math.max(40, Math.round(startW + (ev.clientX - x0))); dtable.style.gridTemplateColumns = buildGrid(work); };
-      const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); overlayDragging = false; item.setParams({ tableColW: work.slice() }); bumpTable(); };
+      const move = (ev) => { if (!moved && Math.abs(ev.clientX - x0) < 3) return; moved = true; work[slot] = Math.max(40, Math.round(startW + (ev.clientX - x0))); dtable.style.gridTemplateColumns = buildGrid(work); };
+      // commit only on an actual drag — a no-move click must NOT rebuild, or the
+      // grip element is replaced between the two clicks and dblclick never fires
+      const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); overlayDragging = false; if (moved) { item.setParams({ tableColW: work.slice() }); bumpTable(); } };
       grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
     };
     const autosizeCol = (e, slot) => {          // double-click a header → fit the widest cell
