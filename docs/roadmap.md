@@ -72,8 +72,16 @@ via sn.cone + angular test; hit-test points via sn.project (dcos→screen).
 **Open questions**: lasso view-dependence (fine — WYSIWYG); selection scoped to the
 active layer vs all visible (lean: active layer, since tag/extract want one dataset).
 
-**Phasing**: P1 = cone + lasso + actions (extract / tag-to-set / recolour / delete /
-invert / clear). P2 = spherical polygon + great-circle band.
+**Phasing**: P1 ✅ = cone + lasso + rect + actions (extract / tag-to-set with a
+chosen/new column / stats / invert / clear), Shift=add / Alt=subtract.
+P2 ✅ = spherical polygon (`g` — click vertices, click-first/double-click to close,
+Esc cancels; winding test in `sphInside`) + great-circle band (`d` — click a
+plane's pole, drag the half-width; `|angle(datum,pole) − 90°| ≤ w`). Both are
+rotation-independent (test on dcos, not screen). Spherical rectangle (trend/plunge
+box) intentionally skipped — the screen-space rect covers that ergonomically and a
+lat/lon box adds trend-wraparound fuss for little gain.
+P3 (maybe): per-tool combine buttons (vs the Shift/Alt modifiers), selection
+scoped to active-layer vs all-visible toggle, by-attribute select (where col = x).
 
 ## Composition overlay → map-composer (flagship #2)
 

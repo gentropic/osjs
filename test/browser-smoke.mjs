@@ -115,6 +115,30 @@ await check('cone selects data by drag', async () => {
   assert(await selCount() > 0, 'wide cone selected nothing');
 });
 
+await check('spherical polygon selects data by clicking vertices', async () => {
+  await page.evaluate(() => window.osjs.commitSelection(() => false));   // clear
+  await page.locator('header button[title^="polygon"]').click();
+  const b = await netBox();
+  const R = b.w / 2 * 0.82;   // vertices must land inside the projection circle (locate is null past ~0.85)
+  const verts = [];
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * 2 * Math.PI; verts.push([b.cx + R * Math.cos(a), b.cy + R * Math.sin(a)]); }
+  for (const [x, y] of verts) { await page.mouse.click(x, y); await page.waitForTimeout(15); }
+  await page.mouse.click(verts[0][0], verts[0][1]);   // click first vertex again → close
+  await page.waitForTimeout(50);
+  assert(await selCount() > 0, 'a near-full-disk spherical polygon selected nothing');
+  await page.evaluate(() => window.osjs.commitSelection(() => false));
+});
+
+await check('band selects data within an angle of a plane', async () => {
+  await page.locator('header button[title^="band"]').click();
+  const b = await netBox();
+  await page.mouse.move(b.cx, b.cy); await page.mouse.down();   // pole at centre → great circle = the primitive
+  await page.mouse.move(b.cx + b.w * 0.4, b.cy); await page.mouse.up();   // drag near the rim → wide band (stay inside the circle)
+  await page.waitForTimeout(50);
+  assert(await selCount() > 0, 'a wide band selected nothing');
+  await page.evaluate(() => window.osjs.commitSelection(() => false));
+});
+
 await check('wheel zooms the viewport', async () => {
   await page.evaluate(() => window.osjs.net.resetViewport());
   const b = await netBox();

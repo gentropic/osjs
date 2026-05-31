@@ -574,3 +574,22 @@ test('table tab: shows the selected item and edits write through to the model', 
   assert.equal(item.currentColumns().length, 1, 'add column adds an aligned column');
   assert.equal(item.currentColumns()[0].values.length, item.measurements().length, 'new column aligned to rows');
 });
+
+test('table: ghost rows let you type a new measurement in place', async () => {
+  const root = document.createElement('div');
+  const { project } = mountApp(root);
+  const item = project.items()[0];
+  [...root.querySelectorAll('.tabs .tab')].find((t) => /table/i.test(t.textContent)).click();
+  await tick();
+  // no ghost inputs in read-only mode
+  assert.equal(root.querySelectorAll('.dtable .td.ghost input.tc').length, 0, 'no ghost rows when not editing');
+  [...root.querySelectorAll('.thead-row .btn')].find((b) => /edit/i.test(b.textContent)).click();
+  await tick();
+  const ghosts = root.querySelectorAll('.dtable .td.ghost input.tc');
+  assert.ok(ghosts.length > 0, 'edit mode shows typeable ghost rows');
+  const n0 = item.currentMeasurements().length;
+  ghosts[0].value = '123'; ghosts[0].dispatchEvent(new window.Event('change'));
+  await tick();
+  assert.equal(item.currentMeasurements().length, n0 + 1, 'committing a ghost cell appends a measurement');
+  assert.equal(item.currentMeasurements()[n0][0], 123, 'the typed value lands in the new row');
+});

@@ -92,7 +92,7 @@ export function mountApp(root) {
 
   // data selection (lasso/cone/rect → highlight + extract); see ui/selection.js
   const { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, tagSelection, statsSelection, clear: clearSelection, render: renderSelection } =
-    createSelection({ net, project, conversions, vec3, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m), onDataChange: () => bumpTable() });
+    createSelection({ net, project, conversions, vec3, curves: bearing.curves, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m), onDataChange: () => bumpTable() });
 
   // ── persistence + undo/redo history ──
   // The reactive effect below fires on any project change; it autosaves and, after
@@ -141,7 +141,7 @@ export function mountApp(root) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = e.key.toLowerCase();
-    if (k === 's') setMode('select'); else if (k === 'l') setMode('lasso'); else if (k === 'c') setMode('cone'); else if (k === 'b') setMode('rect'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
+    if (k === 's') setMode('select'); else if (k === 'l') setMode('lasso'); else if (k === 'c') setMode('cone'); else if (k === 'b') setMode('rect'); else if (k === 'g') setMode('poly'); else if (k === 'd') setMode('band'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
     else if (k === '0') net.resetView();
     else if (k === 'escape') setSelected(null);
   });
@@ -871,6 +871,32 @@ export function mountApp(root) {
       cols.forEach((c, ci) => cells.push(h`<div class="td" data-row=${i} data-col=${geom.length + ci}>${cell(c.values[i] ?? '', (v) => setCell(ci, i, v))}</div>`));
       if (edit) cells.push(h`<div class="td tdel" data-row=${i}><button class="rm" title="delete row" onclick=${() => delRow(i)}>×</button></div>`);
     });
+    // ghost rows — empty, typeable rows below the data so you can enter new
+    // measurements in place (like a spreadsheet). Committing any cell (Enter /
+    // blur) appends a real row pre-filled with what you typed. Only in edit
+    // mode; when floating, fill the panel's spare height so a resized-tall table
+    // reads as "more room to type" rather than dead space.
+    if (edit) {
+      const commitGhost = (k, isGeom, ci, v) => {
+        if (v === '' || v == null) return;
+        const newCols = item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }));
+        const newGeom = geom.map(() => 0);
+        if (isGeom) { const n = parseFloat(v); if (!Number.isFinite(n)) return; newGeom[k] = n; }
+        else newCols[ci].values[newCols[ci].values.length - 1] = v;
+        item.setMeasurements([...item.currentMeasurements(), newGeom]);
+        item.setColumns(newCols);
+        bumpTable();
+      };
+      const ROW_H = 22;
+      let ghostN = 2;
+      if (inPanel) { const th = item.currentParams().tableH; if (th) ghostN = Math.max(1, Math.min(80, Math.ceil((th - 28 - meas.length * ROW_H) / ROW_H))); }
+      for (let g = 0; g < ghostN; g++) {
+        cells.push(h`<div class="td ghostnum"></div>`);
+        geom.forEach((gg, k) => cells.push(h`<div class="td ghost"><input class="tc" placeholder=${g === 0 ? gg : ''} onchange=${(e) => { commitGhost(k, true, 0, e.target.value); }}></div>`));
+        cols.forEach((c, ci) => cells.push(h`<div class="td ghost"><input class="tc" placeholder=${g === 0 ? c.name : ''} onchange=${(e) => { commitGhost(0, false, ci, e.target.value); }}></div>`));
+        cells.push(h`<div class="td tdel ghost"></div>`);
+      }
+    }
     // hover a row → brush its datum on the net (delegated; leaves clear the ring)
     const rowHover = (e) => { const r = e.target.closest('[data-row]'); if (r) highlightPoint(item, +r.dataset.row); else clearHighlight(); };
     return h`<div class="tablebox">
@@ -1406,13 +1432,15 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', band: 'band (d): click a plane’s pole, drag → select data within that angle of its great circle · Shift add · Alt subtract', poly: 'polygon (g): click vertices to draw a spherical polygon, click the first point (or double-click) to close · Esc cancel · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
   // small stroke icons (inline SVG) for the tools — compact, scannable
   const ICON = {
     select: '<path d="M3 2l9 6.5-3.8.6 2.2 4-1.7.9-2.2-4-2.7 2.8z" fill="currentColor" stroke="none"/>',
     lasso: '<ellipse cx="8" cy="6.5" rx="5.5" ry="4" stroke-dasharray="2 1.4"/><path d="M4.5 10.2c-1 .6-1 1.8 .6 2"/>',
     cone: '<circle cx="8" cy="8" r="5.6" stroke-dasharray="2 1.4"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
     rect: '<rect x="2.5" y="3.5" width="11" height="9" rx="1" stroke-dasharray="2 1.4"/>',
+    band: '<circle cx="8" cy="8" r="5.6"/><path d="M2.7 5.4h10.6M2.7 10.6h10.6" stroke-dasharray="2 1.4"/>',
+    poly: '<path d="M8 2.2l5.4 4-2 5.6H4.6l-2-5.6z" stroke-dasharray="2 1.4"/><circle cx="8" cy="2.2" r="1.2" fill="currentColor" stroke="none"/>',
     measure: '<path d="M3 13V3M3 13h10"/><path d="M3 8a5 5 0 0 0 5 5" fill="none"/>',
     rotate: '<path d="M13 8a5 5 0 1 1-1.6-3.6"/><path d="M13.2 3.2v3h-3"/>',
     pick: '<circle cx="8" cy="8" r="3.6"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/>',
@@ -1421,7 +1449,7 @@ export function mountApp(root) {
   const icon = (name) => { const s = document.createElementNS(SVGNS_, 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('class', 'ic'); s.innerHTML = ICON[name] || ''; return s; };
   const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg ic-btn on' : 'seg ic-btn')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${ICON[m] ? icon(m) : label}</button>`;
   // selection combine toggle (replace / add / subtract), shown for selection tools
-  const SELTOOLS = ['lasso', 'cone', 'rect'];
+  const SELTOOLS = ['lasso', 'cone', 'rect', 'band', 'poly'];
   const combineSeg = h`<span class=${() => (SELTOOLS.includes(mode()) ? 'grp small' : 'grp small hidden')} title="how a new selection combines (Shift = add, Alt = subtract, temporarily)">
     ${[['replace', '▦', 'replace'], ['add', '＋', 'add'], ['subtract', '−', 'subtract']].map(([v, g, t]) =>
       h`<button class=${() => (selCombine() === v ? 'seg on' : 'seg')} title=${t} onclick=${() => setSelCombine(v)}>${g}</button>`)}
@@ -1503,7 +1531,7 @@ export function mountApp(root) {
       <span class="spacer"></span>
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
-        ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('rect', 'rect')}
+        ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('rect', 'rect')}${modeSeg('band', 'band')}${modeSeg('poly', 'poly')}
       </div>
       ${combineSeg}
       <div class="grp" title="net tools">

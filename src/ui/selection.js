@@ -1,19 +1,25 @@
 /**
- * @module ui/selection — data selection on the net (lasso / cone / rect).
+ * @module ui/selection — data selection on the net.
  *
- * A region drag selects measurements of the visible layers; the selection is a
+ * A region selects measurements of the visible layers; the selection is a
  * Map(itemId → Set of datum indices), highlighted with rings on a layer over the
  * net (the selLayer spans the whole plot; net.place is net-relative, so the SVG is
  * translated by the net's offset). Actions: extract → new layer, invert, clear.
  *
+ * Tools come in two flavours:
+ *  · screen-space drags — lasso (freehand loop), rect (box). View-dependent.
+ *  · attitude-space regions, rotation-independent — cone (within an angle of an
+ *    axis), band (within an angle of a plane's great circle), poly (inside a
+ *    spherical polygon of great-circle edges, built by clicking vertices).
+ *
  * Domain-specific (uses dcos / attitude space), so it lives in OSJS, not the
  * generic composer. Factory keeps it decoupled from the app's other state.
- *   createSelection({ net, project, conversions, vec3, signal, effect, h,
+ *   createSelection({ net, project, conversions, vec3, curves, signal, effect, h,
  *                     ITEM_TYPES, mode, selCombine, onSelect })
  *   mode / selCombine are getters; onSelect = setSelected.
  */
 
-export function createSelection({ net, project, conversions, vec3, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {}, onDataChange = () => {} }) {
+export function createSelection({ net, project, conversions, vec3, curves, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {}, onDataChange = () => {} }) {
   const [selection, setSelection] = signal(new Map());
   const selLayer = document.createElement('div'); selLayer.className = 'sellayer';
   const selSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); selSvg.setAttribute('class', 'sel-svg'); selLayer.append(selSvg);
@@ -33,6 +39,11 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
       for (const i of idx) { const v = ds[i]; if (!v) continue; const [t, p] = conversions.dcosToLine(v); const pt = net.place('attitude', t, p); out.push(`<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="7" class="sel-ring${pt.hidden ? ' back' : ''}"/>`); }
     }
     if (regionPreview) out.push(regionPreview);
+    if (polyVerts && polyVerts.length) {                      // in-progress spherical polygon: edges + vertices
+      for (let i = 0; i < polyVerts.length - 1; i++) for (const r of arcSegments(polyVerts[i], polyVerts[i + 1])) out.push(`<polyline class="cone" points="${r.join(' ')}"/>`);
+      if (polyVerts.length >= 3) for (const r of arcSegments(polyVerts[polyVerts.length - 1], polyVerts[0])) out.push(`<polyline class="band-edge" points="${r.join(' ')}"/>`);
+      polyVerts.forEach((v, i) => { const q = vertScreen(v); if (!q.hidden) out.push(`<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${i === 0 ? 4.5 : 3}" class="poly-vert${i === 0 ? ' first' : ''}"/>`); });
+    }
     selSvg.innerHTML = `<g transform="translate(${offX.toFixed(1)} ${offY.toFixed(1)})">${out.join('')}</g>`;
   }
   // cone outline → polyline segments, broken where it crosses to the back hemisphere
@@ -49,6 +60,37 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
     return runs;
   }
   const pointInPoly = (x, y, poly) => { let inside = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
+  const clamp1 = (x) => Math.max(-1, Math.min(1, x));
+  // a great-circle edge between two dcos → polyline runs, broken where it dips to
+  // the back hemisphere (same convention as coneSegments)
+  function arcSegments(a, b) {
+    const pts = curves.arc(a, b, 48), runs = []; let cur = [];
+    for (const d of pts) { const [t, pl] = conversions.dcosToLine(d), q = net.place('attitude', t, pl); if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
+    if (cur.length > 1) runs.push(cur);
+    return runs;
+  }
+  // band outline = central great circle + the two small-circle edges (pole `axis`,
+  // half-width `w`), each broken at the back hemisphere
+  function bandSegments(axis, w) {
+    const mk = (r, cls) => coneSegments(axis, r).map((run) => `<polyline class="${cls}" points="${run.join(' ')}"/>`).join('');
+    return mk(Math.PI / 2, 'cone') + mk(Math.PI / 2 - w, 'band-edge') + mk(Math.PI / 2 + w, 'band-edge');
+  }
+  // spherical point-in-polygon by signed-angle winding: sum the tangent-plane
+  // angles each edge subtends at p; |Σ| ≈ 2π inside the polygon, ≈ 0 outside.
+  // Works for the lower-hemisphere cap the verts + data share. Robust to non-convex.
+  function sphInside(p, verts) {
+    let sum = 0;
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length];
+      const ta = vec3.sub(a, vec3.scale(p, vec3.dot(a, p))), tb = vec3.sub(b, vec3.scale(p, vec3.dot(b, p)));
+      const la = Math.hypot(ta[0], ta[1], ta[2]), lb = Math.hypot(tb[0], tb[1], tb[2]);
+      if (la < 1e-9 || lb < 1e-9) return true;                  // p sits on a vertex → treat as inside
+      const ap = vec3.scale(ta, 1 / la), bp = vec3.scale(tb, 1 / lb);
+      const ang = Math.acos(clamp1(vec3.dot(ap, bp))), sign = Math.sign(vec3.dot(vec3.cross(ap, bp), p));
+      sum += sign * ang;
+    }
+    return Math.abs(sum) > Math.PI;
+  }
   // combine: 'replace' | 'add' | 'subtract'
   function commitSelection(test, combine) {
     const base = combine === 'add' || combine === 'subtract' ? new Map([...selection()].map(([k, v]) => [k, new Set(v)])) : new Map();
@@ -62,20 +104,37 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
   // pointer drag on the selection layer (active only in a selection mode). Re-arms
   // after each gesture (capture released); Shift = add, Alt/Ctrl = subtract.
   let drag = null;
+  // spherical-polygon in progress: a list of vertex dcos built up by clicking
+  // (multi-click, not a drag). Closed by clicking near the first vertex, by a
+  // double-click, or committed via the public api; Escape cancels.
+  let polyVerts = null, polyCmb = 'replace';
   const local = (e) => { const r = net.element.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const combineOf = (e) => (e.shiftKey ? 'add' : (e.altKey || e.ctrlKey || e.metaKey) ? 'subtract' : selCombine());
+  const vertScreen = (v) => { const [t, p] = conversions.dcosToLine(v); return net.place('attitude', t, p); };
+  function closePoly() { const verts = polyVerts, cmb = polyCmb; polyVerts = null; if (verts && verts.length >= 3) commitSelection((x, y, v) => sphInside(v, verts), cmb); renderSelection(); }
+  function cancelPoly() { if (!polyVerts) return false; polyVerts = null; regionPreview = null; renderSelection(); return true; }
   selLayer.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return; e.preventDefault(); selLayer.setPointerCapture?.(e.pointerId);
+    if (e.button !== 0) return; e.preventDefault();
     const m = mode(), p = local(e), cmb = combineOf(e);
+    if (m === 'poly') {                                  // multi-click: add a vertex, or close near the first
+      const c = net.locate('attitude', p[0], p[1]); if (!c) return;
+      if (polyVerts && polyVerts.length >= 3) { const q0 = vertScreen(polyVerts[0]); if (!q0.hidden && Math.hypot(q0.x - p[0], q0.y - p[1]) <= 12) { closePoly(); return; } }
+      if (!polyVerts) { polyVerts = []; polyCmb = cmb; }
+      polyVerts.push(conversions.lineToDcos(c[0], c[1])); renderSelection(); return;
+    }
+    selLayer.setPointerCapture?.(e.pointerId);
     if (m === 'lasso') drag = { tool: 'lasso', pts: [p], cmb };
     else if (m === 'rect') drag = { tool: 'rect', start: p, cmb };
     else if (m === 'cone') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'cone', axis: conversions.lineToDcos(c[0], c[1]), r: 0, cmb } : null; }
+    else if (m === 'band') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'band', axis: conversions.lineToDcos(c[0], c[1]), w: 0, cmb } : null; }
   });
+  selLayer.addEventListener('dblclick', (e) => { if (mode() === 'poly' && polyVerts && polyVerts.length >= 3) { e.preventDefault(); closePoly(); } });
   selLayer.addEventListener('pointermove', (e) => {
     if (!drag) return; const [x, y] = local(e);
     if (drag.tool === 'lasso') { drag.pts.push([x, y]); regionPreview = `<polygon class="lasso" points="${drag.pts.map((p) => p.join(',')).join(' ')}"/>`; }
     else if (drag.tool === 'rect') { const [sx, sy] = drag.start; drag.rect = [Math.min(sx, x), Math.min(sy, y), Math.abs(x - sx), Math.abs(y - sy)]; regionPreview = `<rect class="lasso" x="${drag.rect[0]}" y="${drag.rect[1]}" width="${drag.rect[2]}" height="${drag.rect[3]}"/>`; }
-    else if (drag.tool === 'cone') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.r = Math.acos(Math.max(-1, Math.min(1, Math.abs(vec3.dot(drag.axis, d))))); regionPreview = coneSegments(drag.axis, drag.r).map((run) => `<polyline class="cone" points="${run.join(' ')}"/>`).join(''); } }
+    else if (drag.tool === 'cone') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.r = Math.acos(clamp1(Math.abs(vec3.dot(drag.axis, d)))); regionPreview = coneSegments(drag.axis, drag.r).map((run) => `<polyline class="cone" points="${run.join(' ')}"/>`).join(''); } }
+    else if (drag.tool === 'band') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.w = Math.acos(clamp1(Math.abs(vec3.dot(drag.axis, d)))); regionPreview = bandSegments(drag.axis, drag.w); } }
     renderSelection();
   });
   selLayer.addEventListener('pointerup', (e) => {
@@ -83,12 +142,15 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
     if (drag) {
       if (drag.tool === 'lasso' && drag.pts.length > 2) { const poly = drag.pts; commitSelection((x, y) => pointInPoly(x, y, poly), drag.cmb); }
       else if (drag.tool === 'rect' && drag.rect) { const [rx, ry, rw, rh] = drag.rect; commitSelection((x, y) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh, drag.cmb); }
-      else if (drag.tool === 'cone' && drag.r > 0) { const ax = drag.axis, r = drag.r; commitSelection((x, y, v) => Math.acos(Math.min(1, Math.abs(vec3.dot(ax, v)))) <= r, drag.cmb); }
+      else if (drag.tool === 'cone' && drag.r > 0) { const ax = drag.axis, r = drag.r; commitSelection((x, y, v) => Math.acos(clamp1(Math.abs(vec3.dot(ax, v)))) <= r, drag.cmb); }
+      else if (drag.tool === 'band' && drag.w > 0) { const ax = drag.axis, w = drag.w; commitSelection((x, y, v) => Math.abs(Math.acos(clamp1(Math.abs(vec3.dot(ax, v)))) - Math.PI / 2) <= w, drag.cmb); }
     }
     drag = null; regionPreview = null; renderSelection();
   });
-  effect(() => { const m = mode(); selLayer.style.pointerEvents = (m === 'lasso' || m === 'cone' || m === 'rect') ? 'auto' : 'none'; });
+  const SEL_MODES = new Set(['lasso', 'cone', 'rect', 'band', 'poly']);
+  effect(() => { const m = mode(); selLayer.style.pointerEvents = SEL_MODES.has(m) ? 'auto' : 'none'; if (m !== 'poly') cancelPoly(); });   // leaving poly mid-draw discards the partial polygon
   effect(() => { selection(); renderSelection(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && cancelPoly()) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 
   const clear = () => setSelection(new Map());
   function extractSelection() {
