@@ -4,6 +4,45 @@ OpenStereo parity is complete; the OS³ experience layer (undo/redo, annotations
 first-run samples) is in. What follows is *net-new* territory — things neither
 reference tool does — plus optional dessert.
 
+## Architecture: the figure-composer (→ eventual `@gcu/compo`)
+
+What we've built is, in effect, a **domain figure-composer**: an overlay of
+positioned, draggable elements (annotations, tables, legend, title, page frame)
+over a plot, in domain coordinate spaces — **attitude** (data-anchored, follows
+rotation) and **figure** (page-fixed) — with selection, persistence, and export to
+SVG/PNG/print. Closest analogues: QGIS's print composer, matplotlib's figure.
+*Not* a general vector editor (Fabric/tldraw/Konva) — those work in generic scene
+space; ours is tied to the projection. Rolling our own (zero-dep) was the right
+call for the domain.
+
+**Current architecture: DOM is the source of truth; SVG export is a projection of
+it** (a DOM→SVG walker + a few model-aware emitters). This is pragmatic — the
+browser computes layout (flex/grid tables, the legend) for free, and we read it —
+but it's fragile at the edges (the legend/table/page-frame export bugs we chased
+were all "the projection didn't match the DOM"). Net is embedded SVG directly.
+
+**North star: a declarative overlay scene.** The net already does this right —
+`contribute(space) → primitives → per-space renderers`. The overlay does *not*; it
+is imperative DOM. The target is to put overlay elements on the same model: each
+emits typed primitives (text/rect/line/group, in a coordinate space) from one
+source of truth, rendered to **DOM** (interactive) *and* **SVG** (export) by two
+renderers. That kills the scrape-the-DOM fragility, makes export first-class, and
+— not coincidentally — yields the clean, stable core to extract.
+
+**Extraction is demand-driven, not now.** Once that model is stable *and* a second
+consumer wants it (the rose/fabric/ternary surfaces, other GCU charts, auditable
+Works figures), lift it into **`@gcu/compo`** — overlay layer + element/primitive
+model + coordinate-space adapters + DOM & SVG renderers + the context-menu/toolbar
+chrome. Until then it lives in OSJS and we keep the API churning freely.
+
+**Phasing.** (1) *Modularize* — carve the composer/export subsystem out of the
+monolithic `app.js` into focused modules (clear seams, smaller files) without
+changing behavior — the safe first step + the future package boundary. (2)
+*Scene-ify* the simple elements (annotations, legend, title, page) onto declarative
+primitives with a shared SVG renderer; keep layout-heavy tables reading rendered
+geometry until their layout is modeled. (3) Unify the DOM renderer onto the same
+primitives. (4) Extract `@gcu/compo` when a second surface needs it.
+
 ## Selections (flagship idea)
 
 Selection-as-interaction — a GIS/illustrator paradigm stereonet tools never adopted.
