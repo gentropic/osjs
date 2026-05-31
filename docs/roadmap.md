@@ -113,6 +113,39 @@ multi-plot question — one zoomable canvas vs per-space viewports).
 viewport in the project file (likely yes, it's part of a saved figure)? Does the
 map-composer want one big canvas hosting several plots, or stays one-plot-per-tab?
 
+## Context menus (interaction infrastructure)
+
+Right-click (and long-press on touch) menus, context-sensitive to what's under the
+cursor. A big discoverability + speed win — most of the actions below already exist
+behind toolbar buttons, inspector controls, or keyboard shortcuts; a context menu
+just puts them where the hand already is. Build once as a reusable OSJS-owned
+component (positioned popup, submenus, Esc/click-away dismiss, keyboard nav,
+long-press on touch); zero-dep, same `h`/signal idiom as the rest of the shell.
+
+**Data tree** (right-click an item or group):
+- rename · duplicate · delete · show/hide · solo (hide siblings)
+- group / ungroup · move to group
+- quick colour · change colour-by · change item type (plane↔pole)
+- zoom/centre on this layer · open its table · stats popup · export this layer
+- (on a group) collapse/expand all · merge children
+
+**Plot area** (right-click the net — branch on the hit):
+- *on a datum / primitive*: select its layer · identify (flash table row) · add to
+  selection · hide that layer · colour-by this datum's value
+- *on empty net*: add measurement here (plane / line at the cursor attitude) ·
+  add annotation here · **set centre here** (rotate that direction to centre) ·
+  reset orientation · fit / zoom · projection toggle · export SVG/PNG
+- *construct-from-plot*: plane / line / intersection / small-circle from the
+  picked point(s) — already wired through measure mode; expose it here too
+- *with an active selection*: extract → new layer · tag-to-set · recolour · invert
+  · clear (ties into the Selections flagship)
+
+**Cross-cutting**: the menu is context-sensitive (hit-test via the same `dsId`
+layer-resolution that select mode uses; detect annotation vs primitive vs empty);
+respect the active selection; mobile long-press; suppress the native browser menu
+only over the app surfaces. Also a candidate home for rose/fabric/table-specific
+actions (e.g. rose: set this bin as start; table: filter by this value).
+
 ## Optional dessert
 - Richer **markdown** in annotations (bold/italic/code, multiline) — currently plain.
 - **Export polish**: legend + title/caption baked into SVG/PNG output.
