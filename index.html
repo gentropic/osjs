@@ -196,7 +196,10 @@
     .dtable .tdel { padding: 0; justify-content: center; }
     .dtable .tdel .rm { border: 0; background: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; }
     .dtable .tdel .rm:hover { color: #d24b6b; }
-    .plotwrap svg { width: min(70vh, 560px); height: auto; filter: drop-shadow(0 1px 6px rgba(40,55,75,.10)); }
+    .plotwrap svg { width: min(70vh, 560px); height: auto; filter: drop-shadow(0 1px 6px rgba(40,55,75,.10)); position: relative; z-index: 1; }
+    /* figure page frame (behind the net; pans/zooms with it) */
+    .pagelayer { position: absolute; pointer-events: none; z-index: 0; overflow: visible; }
+    .pageframe { position: absolute; border: 1px solid var(--line-2); box-shadow: 0 2px 16px rgba(40,55,75,.14); }
     /* guided empty state */
     .emptystate { position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; }
     .es-card { pointer-events: auto; text-align: center; padding: 22px 26px; background: color-mix(in srgb, var(--panel) 90%, transparent);

@@ -310,6 +310,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
   a.setProjection('equal-angle'); a.setRoseBinWidth(15);
   a.setRoseScale('count'); a.setRosePetalStyle('kite'); a.setRoseMean(true); a.setGridSpacing(20); a.setHemisphere('upper');
   a.setLegendShow(false); a.setLegendPos([0.2, 0.3]);
+  a.setPageShow(true); a.setPageAspect('a4-landscape'); a.setFigureBg('paper');
 
   const json = JSON.parse(JSON.stringify(serializeProject(a)));   // prove it is JSON-able
   const b = new Project();
@@ -319,6 +320,7 @@ test('project round-trips through serialize → load (geometry, style, columns, 
   assert.equal(b.roseBinWidth(), 15);
   assert.deepEqual([b.roseScale(), b.rosePetalStyle(), b.roseMean(), b.gridSpacing(), b.hemisphere()], ['count', 'kite', true, 20, 'upper']);
   assert.deepEqual([b.legendShow(), b.legendPos()], [false, [0.2, 0.3]]);   // legend decoration persists
+  assert.deepEqual([b.pageShow(), b.pageAspect(), b.figureBg()], [true, 'a4-landscape', 'paper']);   // figure/page config persists
   assert.equal(b.items().length, 2);
   const [bed, jts] = b.items();
   assert.equal(bed.type, 'planes');

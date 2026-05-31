@@ -410,6 +410,10 @@ export class Project {
     // is just a text annotation (full inspector), not a bespoke decoration.
     mk('legendShow', true);
     mk('legendPos', [-0.98, -0.62]);  // lower-left
+    // figure / page — the composed figure as a page you arrange on
+    mk('pageShow', false);            // show the page frame
+    mk('pageAspect', '1:1');          // '1:1' | '4:3' | '3:4' | '16:9' | 'a4-landscape' | 'a4-portrait'
+    mk('figureBg', 'paper');          // 'paper' (white) | 'transparent' | 'theme'
   }
 
   get roseSettings() { return { binWidth: this.roseBinWidth(), scale: this.roseScale(), petal: this.rosePetalStyle(), mean: this.roseMean() }; }
@@ -522,6 +526,9 @@ export function serializeProject(project) {
     hemisphere: project.hemisphere(),
     legendShow: project.legendShow(),
     legendPos: project.legendPos(),
+    pageShow: project.pageShow(),
+    pageAspect: project.pageAspect(),
+    figureBg: project.figureBg(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -547,6 +554,9 @@ export function loadProject(project, data) {
   if (data.hemisphere) project.setHemisphere(data.hemisphere);
   if (data.legendShow != null) project.setLegendShow(data.legendShow);
   if (data.legendPos) project.setLegendPos(data.legendPos);
+  if (data.pageShow != null) project.setPageShow(data.pageShow);
+  if (data.pageAspect) project.setPageAspect(data.pageAspect);
+  if (data.figureBg) project.setFigureBg(data.figureBg);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;

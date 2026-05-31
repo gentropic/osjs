@@ -720,6 +720,12 @@ export function mountApp(root) {
     <label>diagram <select onchange=${(e) => fabric.setMode(e.target.value)}>
       <option value="woodcock">Woodcock</option><option value="vollmer">Vollmer</option>
     </select></label>
+    <div class="istit">figure / page</div>
+    <label>page frame <span class="chips">${chip('show', () => project.pageShow(), () => project.setPageShow(!project.pageShow()))}</span></label>
+    <label>aspect <select onchange=${(e) => project.setPageAspect(e.target.value)}>
+      ${[['1:1', 'square'], ['4:3', 'landscape 4:3'], ['3:4', 'portrait 3:4'], ['16:9', 'wide 16:9'], ['a4-landscape', 'A4 landscape'], ['a4-portrait', 'A4 portrait']].map(([v, l]) => h`<option value=${v} ${v === project.pageAspect() ? 'selected' : null}>${l}</option>`)}
+    </select></label>
+    <label>background <span class="grp small">${projSegBtn(project.figureBg, project.setFigureBg, 'paper', 'paper')}${projSegBtn(project.figureBg, project.setFigureBg, 'transparent', 'none')}${projSegBtn(project.figureBg, project.setFigureBg, 'theme', 'theme')}</span></label>
   </div>`;
 
   // ── tabbed plots ──
@@ -729,6 +735,8 @@ export function mountApp(root) {
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const panelLayer = document.createElement('div'); panelLayer.className = 'panellayer';
   const brushLayer = document.createElement('div'); brushLayer.className = 'brushlayer';
+  const pageLayer = document.createElement('div'); pageLayer.className = 'pagelayer';   // behind the net
+  const pageFrame = document.createElement('div'); pageFrame.className = 'pageframe'; pageLayer.append(pageFrame);
   let overlayDragging = false;                          // suppress rebuilds while an overlay element is dragged
 
   // composition decorations (draggable legend + title), figure-space, over the net
@@ -930,8 +938,22 @@ export function mountApp(root) {
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
     const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box; pageLayer.style.cssText = box;
     return true;
+  }
+  // the figure page frame: a figure-space rectangle behind the net that pans/zooms
+  // with it (rect-based, like the overlays). Aspect drives its half-extents.
+  const PAGE_BASE = 1.45, ASPECT = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '16:9': 16 / 9, 'a4-landscape': 297 / 210, 'a4-portrait': 210 / 297 };
+  const pageBg = (b) => (b === 'transparent' ? 'transparent' : b === 'theme' ? 'var(--panel-2)' : '#ffffff');
+  function repositionPage() {
+    if (!project.pageShow()) { pageFrame.style.display = 'none'; return; }
+    if (!fitOverlay()) return;
+    pageFrame.style.display = '';
+    const r = ASPECT[project.pageAspect()] || 1, hw = r >= 1 ? PAGE_BASE * r : PAGE_BASE, hh = r >= 1 ? PAGE_BASE : PAGE_BASE / r;
+    const tl = net.place('figure', -hw, hh), br = net.place('figure', hw, -hh);
+    pageFrame.style.left = `${tl.x}px`; pageFrame.style.top = `${tl.y}px`;
+    pageFrame.style.width = `${br.x - tl.x}px`; pageFrame.style.height = `${br.y - tl.y}px`;
+    pageFrame.style.background = pageBg(project.figureBg());
   }
   // drag a decoration (legend/title) in figure space; commits its [u,v] to project
   function dragDecor(e, posKey, el) {
@@ -1315,7 +1337,8 @@ export function mountApp(root) {
       panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`;
     }
   }
-  const repositionOverlay = () => { repositionAnnos(); repositionPanels(); repositionDecor(); };
+  const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); };
+  effect(() => { project.pageShow(); project.pageAspect(); project.figureBg(); repositionPage(); });   // re-place the page on config change
   net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
   // panels rebuild on open/close/min/move/resize/name/edit-mode + structural table
@@ -1325,7 +1348,7 @@ export function mountApp(root) {
   effect(() => { const s = selected(); for (const el of panelLayer.querySelectorAll('.floatpanel')) el.classList.toggle('sel', !!s && el.dataset.panel === s.id); });
 
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}${brushLayer}${decorLayer}${annoLayer}${panelLayer}</div>`,
+    net: h`<div class="plotwrap">${pageLayer}${net.element}${brushLayer}${decorLayer}${annoLayer}${panelLayer}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
@@ -1388,7 +1411,7 @@ export function mountApp(root) {
   const zoomCtl = h`<span class="zoomctl">
     <button class="zb" title="zoom out" onclick=${() => net.setZoom(zoom() / 1.2)}>−</button>
     ${zoomSlider}
-    <button class="zb" title="zoom in" onclick=${() => net.setZoom(zoom() * 1.2)}>＋</button>
+    <button class="zb" title="zoom in" onclick=${() => net.setZoom(zoom() * 1.2)}>+</button>
     <button class="zpct" title="reset to 100%" onclick=${() => net.setZoom(1)}>${() => `${Math.round(zoom() * 100)}%`}</button>
   </span>`;
   effect(() => { zoomCtl.style.display = activeTab() === 'net' ? '' : 'none'; });   // zoom only applies to the net
