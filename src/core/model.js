@@ -414,6 +414,7 @@ export class Project {
     mk('pageShow', false);            // show the page frame
     mk('pageAspect', '1:1');          // '1:1' | '4:3' | '3:4' | '16:9' | 'a4-landscape' | 'a4-portrait'
     mk('figureBg', 'paper');          // 'paper' (white) | 'transparent' | 'theme'
+    mk('exportDpi', 150);             // raster export resolution (PNG scale = dpi/96)
   }
 
   get roseSettings() { return { binWidth: this.roseBinWidth(), scale: this.roseScale(), petal: this.rosePetalStyle(), mean: this.roseMean() }; }
@@ -529,6 +530,7 @@ export function serializeProject(project) {
     pageShow: project.pageShow(),
     pageAspect: project.pageAspect(),
     figureBg: project.figureBg(),
+    exportDpi: project.exportDpi(),
     items: project.nodes().map(serializeNode),
   };
 }
@@ -557,6 +559,7 @@ export function loadProject(project, data) {
   if (data.pageShow != null) project.setPageShow(data.pageShow);
   if (data.pageAspect) project.setPageAspect(data.pageAspect);
   if (data.figureBg) project.setFigureBg(data.figureBg);
+  if (data.exportDpi) project.setExportDpi(data.exportDpi);
   const nodes = (data.items || []).map(buildNode);
   project.setNodes(nodes);
   return nodes;

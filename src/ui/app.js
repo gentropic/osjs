@@ -726,6 +726,9 @@ export function mountApp(root) {
       ${[['1:1', 'square'], ['4:3', 'landscape 4:3'], ['3:4', 'portrait 3:4'], ['16:9', 'wide 16:9'], ['a4-landscape', 'A4 landscape'], ['a4-portrait', 'A4 portrait']].map(([v, l]) => h`<option value=${v} ${v === project.pageAspect() ? 'selected' : null}>${l}</option>`)}
     </select></label>
     <label>background <span class="grp small">${projSegBtn(project.figureBg, project.setFigureBg, 'paper', 'paper')}${projSegBtn(project.figureBg, project.setFigureBg, 'transparent', 'none')}${projSegBtn(project.figureBg, project.setFigureBg, 'theme', 'theme')}</span></label>
+    <label>export DPI <select onchange=${(e) => project.setExportDpi(+e.target.value)}>
+      ${[96, 150, 300, 600].map((d) => h`<option value=${d} ${d === project.exportDpi() ? 'selected' : null}>${d}</option>`)}
+    </select></label>
   </div>`;
 
   // ── tabbed plots ──
@@ -1467,10 +1470,9 @@ export function mountApp(root) {
       </div>
       <div class="grp">
         <button class="seg" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
-        <button class="seg" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: 2, background: '#ffffff' })}>PNG</button>
-        <button class="seg" title="print / save as PDF (camera-ready figure)" onclick=${() => { setPreview(true); requestAnimationFrame(() => { window.print(); }); }}>print</button>
+        <button class="seg" title="export the net as a PNG at the figure DPI" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: Math.max(1, project.exportDpi() / 96), background: '#ffffff' })}>PNG</button>
+        <button class="seg" title="print / save as PDF (camera-ready figure)" onclick=${() => { requestAnimationFrame(() => { window.print(); }); }}>print</button>
       </div>
-      <button class=${() => (preview() ? 'btn icon on' : 'btn icon')} title="preview — hide editing chrome for a camera-ready figure" onclick=${() => setPreview((v) => !v)}>${() => (preview() ? '◉' : '○')}</button>
       <button class="btn icon" title="toggle theme" onclick=${() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>${() => (theme() === 'dark' ? '☀' : '☾')}</button>
     </header>
     <div class="body">
@@ -1500,6 +1502,7 @@ export function mountApp(root) {
       <span class="cur">${() => measureText()}</span>
       ${measureBar}
       <span class="spacer"></span>
+      <button class=${() => (preview() ? 'pvbtn on' : 'pvbtn')} title="preview — show the figure as it will print (editing stays on)" onclick=${() => setPreview((v) => !v)}>${() => (preview() ? '◉ preview' : '○ preview')}</button>
       <span class="cnt">${() => countText()}</span>
       ${zoomCtl}
     </footer>

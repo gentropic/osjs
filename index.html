@@ -66,6 +66,10 @@
     .statusbar .measurebar { display: flex; gap: 6px; align-items: center; }
     .statusbar .measurebar .mini { padding: 1px 8px; font-size: 10px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--panel); color: var(--ink-dim); cursor: pointer; }
     .statusbar .measurebar .mini:hover { color: var(--ink); border-color: var(--ink-dim); }
+    .pvbtn { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; padding: 2px 8px; border: 1px solid var(--line-2);
+             border-radius: 4px; background: var(--panel); color: var(--ink-dim); cursor: pointer; }
+    .pvbtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+    .pvbtn.on { color: var(--on-accent); background: var(--cyan); border-color: var(--cyan); }
     .zoomctl { display: flex; align-items: center; gap: 6px; }
     .zoomctl .zb { width: 18px; height: 18px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--panel);
                    color: var(--ink-dim); font-size: 13px; line-height: 1; cursor: pointer; }
@@ -355,28 +359,31 @@
     .grp.small { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
     .grp.small .seg { padding: 3px 9px; font-size: 10px; }
 
-    /* preview / presentation mode — hide interactive chrome → camera-ready figure */
-    body.preview .side, body.preview .inspector, body.preview .body > .gutter,
-    body.preview .statusbar { display: none; }
-    body.preview .body { grid-template-columns: minmax(0, 1fr); }
-    body.preview .plotarea { background-image: none; background: var(--panel-2); }
-    body.preview .anno-handle, body.preview .fp-resize, body.preview .fp-actions,
-    body.preview .colgrip, body.preview .emptystate { display: none; }
+    /* preview = restyle the FIGURE to camera-ready, but keep editing (rails stay).
+       The same figure-restyle is reused for print below. */
+    body.preview .anno-handle, body.preview .fp-resize, body.preview .colgrip,
+    body.preview .fp-actions, body.preview .floatpanel .thead-row, body.preview .emptystate { display: none; }
     body.preview .anno-label.sel, body.preview .floatpanel.sel, body.preview .netlegend.sel { outline: none; }
     body.preview .anno-label, body.preview .netlegend, body.preview .floatpanel, body.preview .fp-bar { cursor: default; }
     body.preview .anno-label:hover { background: transparent; }
-    body.preview .fp-bar { background: none; }
+    body.preview .floatpanel { box-shadow: 0 0 0 1px var(--line-2); }     /* plain bordered table */
+    body.preview .fp-bar { background: none; border-bottom: 1px solid var(--line); }
+    body.preview .fp-body { padding-top: 4px; }
+    body.preview .plotarea { background-image: none; }                    /* drop the engineering grid */
 
-    /* print = the active figure, full page (camera-ready) */
+    /* print = the active figure only, with NO layout reflow (so the absolutely-
+       positioned overlays keep their coordinates). Hide everything via visibility,
+       reveal just the plot subtree; same figure-restyle as preview. */
     @media print {
-      .topbar, .side, .inspector, .body > .gutter, .tabs, .statusbar { display: none !important; }
-      .body { grid-template-columns: 1fr !important; }
-      .plotarea { background: #fff !important; background-image: none !important; }
-      .anno-handle, .fp-resize, .fp-actions, .colgrip, .emptystate { display: none !important; }
+      body * { visibility: hidden !important; }
+      .plotwrap, .plotwrap * { visibility: visible !important; }
+      .anno-handle, .fp-resize, .colgrip, .fp-actions, .floatpanel .thead-row, .emptystate { display: none !important; }
       .anno-label.sel, .floatpanel.sel, .netlegend.sel { outline: none !important; }
-      .floatpanel { box-shadow: none !important; }
+      .floatpanel { box-shadow: 0 0 0 1px var(--line-2) !important; }
+      .fp-bar { background: none !important; border-bottom: 1px solid var(--line) !important; }
+      .plotarea { background-image: none !important; }
       body, html { background: #fff !important; }
-      @page { margin: 12mm; }
+      @page { margin: 10mm; }
     }
   </style>
 </head>
