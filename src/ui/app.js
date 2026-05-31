@@ -24,7 +24,7 @@ import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFro
 import { unzip, looksLikeZip } from '../io/zip.js';
 import { parseOpenStereo } from '../io/openstereo.js';
 
-const { conversions, color } = bearing;
+const { conversions, color, vec3 } = bearing;
 const RAMPS = ['viridis', 'magma', 'inferno', 'plasma', 'thermal', 'grayscale'];
 const PALETTE = ['#1aa39a', '#e8920c', '#cc3333', '#7a5cff', '#3a9a3a', '#c060c0', '#d4548a', '#5bb8d4'];
 
@@ -72,6 +72,7 @@ export function mountApp(root) {
   if (!restored) seed(project);
 
   const [selected, setSelected] = signal(project.items()[0] || null);
+  const [selection, setSelection] = signal(new Map());   // data selection: itemId → Set(datum index)
   const addPayload = (payload) => { if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[payload.type] || ITEM_TYPES.planes)(payload))); };
   const [theme, setTheme] = signal('light');
   const [preview, setPreview] = signal(false);   // presentation mode: hide interactive chrome → camera-ready figure
@@ -134,7 +135,7 @@ export function mountApp(root) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = e.key.toLowerCase();
-    if (k === 's') setMode('select'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
+    if (k === 's') setMode('select'); else if (k === 'l') setMode('lasso'); else if (k === 'c') setMode('cone'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
     else if (k === '0') net.resetView();
     else if (k === 'escape') setSelected(null);
   });
@@ -751,6 +752,8 @@ export function mountApp(root) {
   const brushLayer = document.createElement('div'); brushLayer.className = 'brushlayer';
   const pageLayer = document.createElement('div'); pageLayer.className = 'pagelayer';   // behind the net
   const pageFrame = document.createElement('div'); pageFrame.className = 'pageframe'; pageLayer.append(pageFrame);
+  const selLayer = document.createElement('div'); selLayer.className = 'sellayer';   // data-selection highlights + lasso/cone
+  const selSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); selSvg.setAttribute('class', 'sel-svg'); selLayer.append(selSvg);
   let overlayDragging = false;                          // suppress rebuilds while an overlay element is dragged
 
   // composition decorations (draggable legend + title), figure-space, over the net
@@ -952,7 +955,7 @@ export function mountApp(root) {
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
     const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box; pageLayer.style.cssText = box;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box; pageLayer.style.cssText = box; selLayer.style.cssText = box;
     return true;
   }
   // the figure page frame: a figure-space rectangle behind the net that pans/zooms
@@ -1351,7 +1354,64 @@ export function mountApp(root) {
       panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`;
     }
   }
-  const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); };
+  // ── data selection (lasso / cone) ──
+  const selItems = () => project.visibleLeaves().filter((it) => it.type !== 'annotation');
+  const selCount = () => { let n = 0; for (const s of selection().values()) n += s.size; return n; };
+  // draw selected-datum rings + the live lasso/cone preview into selSvg (CSS px,
+  // matching net.place); repositioned with the rest of the overlay
+  let regionPreview = null;
+  function renderSelection() {
+    if (!fitOverlay()) { selSvg.replaceChildren(); return; }
+    const sel = selection(); const out = [];
+    for (const it of selItems()) {
+      const idx = sel.get(it.id); if (!idx || !idx.size) continue;
+      const ds = it.dcos();
+      for (const i of idx) { const v = ds[i]; if (!v) continue; const [t, p] = conversions.dcosToLine(v); const pt = net.place('attitude', t, p); out.push(`<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="7" class="sel-ring${pt.hidden ? ' back' : ''}"/>`); }
+    }
+    if (regionPreview) out.push(regionPreview);
+    selSvg.innerHTML = out.join('');
+  }
+  // cone outline (small circle of angular radius r about axis) as CSS-px points
+  function conePath(axis, r) {
+    let u = vec3.normalize(vec3.cross(axis, Math.abs(axis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+    const w = vec3.cross(axis, u); const pts = [];
+    for (let k = 0; k <= 48; k++) { const th = (k / 48) * 2 * Math.PI; const d = vec3.normalize(vec3.add(vec3.scale(axis, Math.cos(r)), vec3.add(vec3.scale(u, Math.sin(r) * Math.cos(th)), vec3.scale(w, Math.sin(r) * Math.sin(th))))); const [t, pl] = conversions.dcosToLine(d); const q = net.place('attitude', t, pl); pts.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
+    return pts;
+  }
+  const pointInPoly = (x, y, poly) => { let inside = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
+  function commitSelection(test, additive) {
+    const next = additive ? new Map([...selection()].map(([k, v]) => [k, new Set(v)])) : new Map();
+    for (const it of selItems()) {
+      const ds = it.dcos(); const hit = next.get(it.id) || new Set();
+      for (let i = 0; i < ds.length; i++) { const [t, p] = conversions.dcosToLine(ds[i]); const q = net.place('attitude', t, p); if (!q.hidden && test(q.x, q.y, ds[i])) hit.add(i); }
+      if (hit.size) next.set(it.id, hit); else next.delete(it.id);
+    }
+    setSelection(next);
+  }
+  // pointer drag on the selection layer (active only in lasso/cone mode)
+  function wireSelect() {
+    let lasso = null, cone = null;
+    const local = (e) => { const r = net.element.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    selLayer.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; e.preventDefault(); selLayer.setPointerCapture?.(e.pointerId);
+      if (mode() === 'lasso') { lasso = [local(e)]; }
+      else if (mode() === 'cone') { const [x, y] = local(e); const c = net.locate('attitude', x, y); cone = c ? { axis: conversions.lineToDcos(c[0], c[1]), r: 0 } : null; }
+    });
+    selLayer.addEventListener('pointermove', (e) => {
+      if (lasso) { lasso.push(local(e)); regionPreview = `<polygon class="lasso" points="${lasso.map((p) => p.join(',')).join(' ')}"/>`; renderSelection(); }
+      else if (cone) { const [x, y] = local(e); const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); cone.r = Math.acos(Math.max(-1, Math.min(1, Math.abs(vec3.dot(cone.axis, d))))); regionPreview = `<polyline class="cone" points="${conePath(cone.axis, cone.r).join(' ')}"/>`; renderSelection(); } }
+    });
+    selLayer.addEventListener('pointerup', (e) => {
+      const additive = e.shiftKey;
+      if (lasso && lasso.length > 2) { const poly = lasso; commitSelection((x, y) => pointInPoly(x, y, poly), additive); }
+      else if (cone && cone.r > 0) { const ax = cone.axis, r = cone.r; commitSelection((x, y, v) => Math.acos(Math.min(1, Math.abs(vec3.dot(ax, v)))) <= r, additive); }
+      lasso = cone = null; regionPreview = null; renderSelection();
+    });
+  }
+  wireSelect();
+  effect(() => { const m = mode(); selLayer.style.pointerEvents = (m === 'lasso' || m === 'cone') ? 'auto' : 'none'; });
+  effect(() => { selection(); renderSelection(); });   // redraw highlights on change
+  const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); renderSelection(); };
   effect(() => { project.pageShow(); project.pageAspect(); project.figureBg(); repositionPage(); });   // re-place the page on config change
   net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
@@ -1362,7 +1422,7 @@ export function mountApp(root) {
   effect(() => { const s = selected(); for (const el of panelLayer.querySelectorAll('.floatpanel')) el.classList.toggle('sel', !!s && el.dataset.panel === s.id); });
 
   const wraps = {
-    net: h`<div class="plotwrap">${pageLayer}${net.element}${brushLayer}${decorLayer}${annoLayer}${panelLayer}</div>`,
+    net: h`<div class="plotwrap">${pageLayer}${net.element}${brushLayer}${decorLayer}${annoLayer}${panelLayer}${selLayer}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
@@ -1421,7 +1481,7 @@ export function mountApp(root) {
   const SVGNS = 'http://www.w3.org/2000/svg';
   const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n2 = (v) => Math.round(v * 100) / 100;
-  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter,.pageframe,.floatpanel';   // floatpanel handled cleanly by emitPanel; page frame = crop edge; buttons by tag
+  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.brushlayer,.sellayer,.gutter,.pageframe,.floatpanel';   // transient UI (brush/selection) + chrome out of exports; floatpanel handled by emitPanel
   // best-effort font embedding: fetch the Google-Fonts CSS + woff2 and inline them
   // as data-URIs so exported SVGs are self-contained. Cached; falls back silently
   // (offline / CORS) to family-name references (the viewer substitutes).
@@ -1548,7 +1608,7 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside', cone: 'cone (c): click an axis, drag the radius → select data within that angle', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
   const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
@@ -1571,6 +1631,28 @@ export function mountApp(root) {
     if (kind === 'plane') { const [dd, dip] = conversions.dcosToPlane(m.pole).map(Math.round); addPayload({ type: 'planes', name: 'plane', measurements: [[dd, dip]], style: { color, width: 1 } }); }
     else { const [t, p] = conversions.dcosToLine(m.pole).map(Math.round); addPayload({ type: 'lines', name: 'axis', measurements: [[t, p]], style: { color, size: 5 } }); }
   };
+  // selection actions (footer), shown when data is selected
+  function extractSelection() {
+    const sel = selection(); if (!selCount()) return;
+    for (const it of selItems()) {
+      const idx = sel.get(it.id); if (!idx || !idx.size) continue;
+      const order = [...idx].sort((a, b) => a - b), meas = it.currentMeasurements(), cols = it.currentColumns();
+      const payload = { type: it.type, name: `${it.currentName()} sel`, measurements: order.map((i) => (Array.isArray(meas[i]) ? meas[i].slice() : meas[i])), columns: cols.map((c) => ({ name: c.name, values: order.map((i) => c.values[i]) })), style: { ...it.currentStyle() } };
+      if (payload.measurements.length) setSelected(project.add(new (ITEM_TYPES[it.type] || ITEM_TYPES.planes)(payload)));
+    }
+    setSelection(new Map());
+  }
+  function invertSelection() {
+    const sel = selection(), next = new Map();
+    for (const it of selItems()) { const n = it.dcos().length, cur = sel.get(it.id) || new Set(), inv = new Set(); for (let i = 0; i < n; i++) if (!cur.has(i)) inv.add(i); if (inv.size) next.set(it.id, inv); }
+    setSelection(next);
+  }
+  const selBar = document.createElement('span');
+  selBar.className = 'measurebar';
+  effect(() => {
+    const n = selCount();
+    selBar.replaceChildren(...(n ? [h`<span class="selcount">${n} selected</span><button class="mini" onclick=${extractSelection}>extract →</button><button class="mini" onclick=${invertSelection}>invert</button><button class="mini" onclick=${() => setSelection(new Map())}>clear</button>`] : []));
+  });
   const measureBar = document.createElement('span');
   measureBar.className = 'measurebar';
   effect(() => {
@@ -1627,7 +1709,7 @@ export function mountApp(root) {
       <span class="spacer"></span>
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
-        ${modeSeg('select', 'select')}${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+        ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
         <button class="seg" title="fit — reset zoom & pan (scroll to zoom · middle-drag to pan)" onclick=${() => net.resetViewport()}>⤢</button>
       </div>
@@ -1671,7 +1753,7 @@ export function mountApp(root) {
     </div>
     <footer class="statusbar">
       <span class="cur">${() => measureText()}</span>
-      ${measureBar}
+      ${measureBar}${selBar}
       <span class="spacer"></span>
       <button class=${() => (preview() ? 'pvbtn on' : 'pvbtn')} title="preview — show the figure as it will print (editing stays on)" onclick=${() => setPreview((v) => !v)}>${() => (preview() ? '◉ preview' : '○ preview')}</button>
       <span class="cnt">${() => countText()}</span>
@@ -1684,5 +1766,5 @@ export function mountApp(root) {
     const saved = JSON.parse(lsGet(LAYOUT_KEY) || 'null'); const body = app.querySelector('.body');
     if (saved && body) { if (saved.side) body.style.setProperty('--side-w', saved.side); if (saved.insp) body.style.setProperty('--insp-w', saved.insp); }
   } catch { /* ignore */ }
-  return { project, net, rose, fabric, select: setSelected, composeFigureSVG, nativeFigure };
+  return { project, net, rose, fabric, select: setSelected, composeFigureSVG, nativeFigure, selection, commitSelection, extractSelection };
 }

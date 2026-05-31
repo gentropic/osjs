@@ -342,6 +342,19 @@ test('footer zoom control: reflects the viewport and the % resets to 100%', asyn
   assert.equal(handle.net.viewport.scale, 1, 'clicking the % resets to 100%');
 });
 
+test('selection: select data then extract → new layer(s), and clears', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const before = handle.project.items().length;
+  handle.commitSelection(() => true, false);             // select every (lower-hemisphere) datum
+  let n = 0; for (const s of handle.selection().values()) n += s.size;
+  assert.ok(n > 0, 'select-all picks up data');
+  handle.extractSelection();
+  assert.ok(handle.project.items().length > before, 'extract adds layer(s)');
+  let after = 0; for (const s of handle.selection().values()) after += s.size;
+  assert.equal(after, 0, 'extract clears the selection');
+});
+
 test('preview mode: the toggle adds/removes body.preview', async () => {
   const root = document.createElement('div');
   mountApp(root);
