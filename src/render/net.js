@@ -80,8 +80,9 @@ export class NetRenderer {
     const mark = (d, r) => { const [t, pl] = conversions.dcosToLine(d); this.sn.line(t, pl, { fill: C, stroke: '#fff', r: r || 4, class: 'osjs-measure' }); };
     mark(m.a);
     if (m.b) {
-      const pole = vec3.normalize(vec3.cross(m.a, m.b));
+      let pole = vec3.normalize(vec3.cross(m.a, m.b));
       if (Number.isFinite(pole[0]) && vec3.length(vec3.cross(m.a, m.b)) > 1e-6) {
+        if (pole[2] > 0) pole = vec3.negate(pole);   // use the pole in view (lower hemisphere)
         const [dd, dip] = conversions.dcosToPlane(pole);
         this.sn.plane(dd, dip, { stroke: C, 'stroke-width': 1, 'stroke-dasharray': '2 3', class: 'osjs-measure' });   // full great circle
         // spherical triangle A–B–pole: the measured arc + the two arcs to the pole
