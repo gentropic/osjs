@@ -92,7 +92,7 @@ export function mountApp(root) {
 
   // data selection (lasso/cone/rect → highlight + extract); see ui/selection.js
   const { selLayer, selBar, selection, selCount, commitSelection, extractSelection, invertSelection, tagSelection, statsSelection, clear: clearSelection, render: renderSelection } =
-    createSelection({ net, project, conversions, vec3, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m) });
+    createSelection({ net, project, conversions, vec3, statistics: bearing.statistics, signal, effect, h, ITEM_TYPES, mode: () => mode(), selCombine: () => selCombine(), onSelect: setSelected, notify: (m) => setNotice(m), onDataChange: () => bumpTable() });
 
   // ── persistence + undo/redo history ──
   // The reactive effect below fires on any project change; it autosaves and, after

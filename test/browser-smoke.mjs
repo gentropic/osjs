@@ -80,19 +80,22 @@ await check('extract turns the selection into a new layer + clears', async () =>
   assert(await selCount() === 0, 'selection not cleared after extract');
 });
 
-await check('tag-to-set: lasso then tag → categorical "set" column', async () => {
+await check('tag-to-set: lasso then tag → categorical column + the open table refreshes live', async () => {
+  await page.evaluate(() => window.osjs.project.items().find((x) => x.type !== 'annotation').setParams({ tableOpen: true }));
+  await page.waitForTimeout(40);
   await page.locator('header button[title^="lasso"]').click();
   const b = await netBox();
   await page.mouse.move(b.x - 12, b.y - 12); await page.mouse.down();
   await page.mouse.move(b.x + b.w + 12, b.y - 12); await page.mouse.move(b.x + b.w + 12, b.y + b.h + 12);
   await page.mouse.move(b.x - 12, b.y + b.h + 12); await page.mouse.move(b.x - 12, b.y - 12); await page.mouse.up();
   await page.waitForTimeout(40);
-  const tagged = await page.evaluate(() => {
-    window.osjs.tagSelection('set-A');
-    return window.osjs.project.items().some((it) => (it.currentColumns?.() || []).some((c) => c.name === 'set' && c.values.includes('set-A')) && it.currentStyle().colorMode === 'categorical');
-  });
-  assert(tagged, 'no layer got a categorical set-A tag');
-  await page.evaluate(() => window.osjs.commitSelection(() => false));   // clear
+  await page.evaluate(() => window.osjs.tagSelection('Z', 'zone'));
+  await page.waitForTimeout(80);
+  const tagged = await page.evaluate(() => window.osjs.project.items().some((it) => (it.currentColumns?.() || []).some((c) => c.name === 'zone' && c.values.includes('Z')) && it.currentStyle().colorMode === 'categorical'));
+  assert(tagged, 'no layer got a categorical zone tag');
+  const inTable = await page.evaluate(() => [...document.querySelectorAll('.floatpanel .dtable .th')].some((th) => /zone/.test(th.textContent)));
+  assert(inTable, 'the tagged column did not appear in the open table (no live refresh)');
+  await page.evaluate(() => { window.osjs.commitSelection(() => false); window.osjs.project.items().find((x) => x.type !== 'annotation').setParams({ tableOpen: false }); });
 });
 
 await check('stats-on-selection reports a footer read-out', async () => {

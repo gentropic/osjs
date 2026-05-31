@@ -13,7 +13,7 @@
  *   mode / selCombine are getters; onSelect = setSelected.
  */
 
-export function createSelection({ net, project, conversions, vec3, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {} }) {
+export function createSelection({ net, project, conversions, vec3, statistics, signal, effect, h, ITEM_TYPES, mode, selCombine, onSelect, notify = () => {}, onDataChange = () => {} }) {
   const [selection, setSelection] = signal(new Map());
   const selLayer = document.createElement('div'); selLayer.className = 'sellayer';
   const selSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); selSvg.setAttribute('class', 'sel-svg'); selLayer.append(selSvg);
@@ -106,20 +106,25 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
     for (const it of selItems()) { const n = it.dcos().length, cur = sel.get(it.id) || new Set(), inv = new Set(); for (let i = 0; i < n; i++) if (!cur.has(i)) inv.add(i); if (inv.size) next.set(it.id, inv); }
     setSelection(next);
   }
-  // tag the selection into a categorical 'set' column + colour by it (the manual
-  // complement to auto k-means clustering). Tagging different subsets builds classes.
-  function tagSelection(value) {
-    const v = (value || '').trim(); const sel = selection(); if (!v || !selCount()) return;
+  // tag the selection into a categorical column (default 'set') + colour by it (the
+  // manual complement to k-means). Column is created if missing; tagging different
+  // subsets builds classes. onDataChange() refreshes the tables.
+  function tagSelection(value, colName) {
+    const v = (value || '').trim(), name = (colName || '').trim() || 'set'; const sel = selection();
+    if (!v || !selCount()) return;
     for (const it of selItems()) {
       const idx = sel.get(it.id); if (!idx || !idx.size) continue;
       const cols = it.currentColumns().map((c) => ({ name: c.name, values: c.values.slice() }));
-      let si = cols.findIndex((c) => c.name === 'set');
-      if (si < 0) { cols.push({ name: 'set', values: it.currentMeasurements().map(() => '') }); si = cols.length - 1; }
+      let si = cols.findIndex((c) => c.name === name);
+      if (si < 0) { cols.push({ name, values: it.currentMeasurements().map(() => '') }); si = cols.length - 1; }
       for (const i of idx) cols[si].values[i] = v;
       it.setColumns(cols);
       it.setStyle({ ...it.currentStyle(), colorMode: 'categorical', colorBy: (it.constructor.GEOM || []).length + si });
     }
+    onDataChange();
   }
+  // distinct data-column names across the currently-selected layers (for the tag-column suggestions)
+  const selColumnNames = () => { const s = new Set(); for (const it of selItems()) { if (selection().get(it.id)) for (const c of it.currentColumns()) s.add(c.name); } return [...s]; };
   // pooled orientation stats on just the selected directions → footer read-out
   function statsSelection() {
     const sel = selection(), dc = [];
@@ -131,16 +136,25 @@ export function createSelection({ net, project, conversions, vec3, statistics, s
   }
   const selBar = document.createElement('span');
   selBar.className = 'measurebar';
+  let tagId = 0;
   effect(() => {
     const n = selCount();
     if (!n) { selBar.replaceChildren(); return; }
-    const tagIn = document.createElement('input'); tagIn.className = 'tagin'; tagIn.placeholder = 'tag…'; tagIn.title = 'tag the selection as a category (→ categorical colour-by)';
-    const apply = () => { tagSelection(tagIn.value); };
-    tagIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    const existing = new Set(selColumnNames());
+    const colIn = document.createElement('input'); colIn.className = 'tagin'; colIn.placeholder = 'column'; colIn.value = 'set';
+    colIn.title = 'column to tag — pick one or type a new name to create it';
+    const dl = document.createElement('datalist'); dl.id = `tagcols${tagId++}`; for (const nm of existing) { const o = document.createElement('option'); o.value = nm; dl.append(o); } colIn.setAttribute('list', dl.id);
+    const valIn = document.createElement('input'); valIn.className = 'tagin'; valIn.placeholder = 'tag…'; valIn.title = 'category value for the selected rows';
+    const hint = document.createElement('span'); hint.className = 'taghint';
+    const upd = () => { const c = colIn.value.trim(); hint.textContent = c && !existing.has(c) ? '+new' : ''; };
+    colIn.addEventListener('input', upd); upd();
+    const apply = () => tagSelection(valIn.value, colIn.value);
+    valIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
     selBar.replaceChildren(
       h`<span class="selcount">${n} selected</span>`,
-      tagIn,
+      colIn, hint, valIn,
       h`<button class="mini" onclick=${apply}>tag</button><button class="mini" onclick=${statsSelection}>stats</button><button class="mini" onclick=${extractSelection}>extract →</button><button class="mini" onclick=${invertSelection}>invert</button><button class="mini" onclick=${clear}>clear</button>`,
+      dl,
     );
   });
 
