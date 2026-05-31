@@ -100,8 +100,15 @@ a fixed net. Pieces:
     overlay (annotations/tables/legend) into the raster/vector.
   - **Explicit page size** (mm/in, named presets A4/Letter/…) not just aspect, so
     DPI×size gives real output pixel dimensions.
-  - **Composed SVG/PNG export** (the overlay-baking piece) — the one genuinely hard
-    part; print is the interim full-composition path.
+  - **Composed SVG/PNG export** ✓ (built) — the plot container (net SVG + overlays)
+    is serialized into one SVG via `<foreignObject>` with the stylesheets + theme
+    vars inlined; SVG downloads it, PNG rasterizes via `<img>`+canvas at exportDpi;
+    page frame on → viewBox crops to the page. `composeFigureSVG()`. Caveats to
+    revisit: web fonts fall back to system (not embedded); Safari/`foreignObject`
+    canvas-taint may block PNG there; consider embedding fonts + an SVG-native
+    (no-foreignObject) path for editor interop (Illustrator).
+  - **Print** could now reuse the composed render instead of `window.print()` of
+    the live DOM (more reliable) — open the composed SVG in a print window.
 - Multiple figures / pages eventually (a project holds several composed views) —
   the QGIS-layout-manager analogue. Defer until single-page is solid.
 This is where preview/print graduates from "hide chrome" to "a real page you arrange
