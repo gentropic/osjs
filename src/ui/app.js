@@ -1399,8 +1399,8 @@ export function mountApp(root) {
     const r = wrap.getBoundingClientRect();
     const W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height));
     const clone = wrap.cloneNode(true);
-    clone.querySelectorAll('.anno-handle, .fp-resize, .fp-actions, .colgrip, .emptystate').forEach((e) => e.remove());
-    clone.querySelectorAll('.floatpanel .thead-row').forEach((e) => e.remove());
+    clone.querySelectorAll('.anno-handle, .fp-resize, .colgrip, .emptystate').forEach((e) => e.remove());   // non-flow chrome
+    clone.querySelectorAll('.fp-actions, .thead-row .btn, .thead-row .mini').forEach((e) => { e.style.visibility = 'hidden'; });   // keep layout → table stays put
     clone.querySelectorAll('.sel').forEach((e) => e.classList.remove('sel'));
     clone.style.cssText = `position:relative;inset:auto;width:${W}px;height:${H}px;display:flex;align-items:center;justify-content:center;`;
     const cnet = clone.querySelector(':scope > svg'); if (cnet) { cnet.style.width = `${net.element.offsetWidth || 540}px`; cnet.style.height = 'auto'; }   // px, not vh (no viewport in the isolated render)
@@ -1420,8 +1420,27 @@ export function mountApp(root) {
   const SVGNS = 'http://www.w3.org/2000/svg';
   const xesc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n2 = (v) => Math.round(v * 100) / 100;
-  const SKIP = '.anno-handle,.fp-resize,.fp-actions,.colgrip,.thead-row,.emptystate,.brushring,.gutter';
-  function nativeFigure() {
+  const SKIP = '.anno-handle,.fp-resize,.colgrip,.emptystate,.brushring,.gutter';   // buttons themselves are skipped by tag (BUTTON/INPUT)
+  // best-effort font embedding: fetch the Google-Fonts CSS + woff2 and inline them
+  // as data-URIs so exported SVGs are self-contained. Cached; falls back silently
+  // (offline / CORS) to family-name references (the viewer substitutes).
+  let _fontCSS;
+  const ab2b64 = (buf) => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+  async function embeddedFontCSS() {
+    if (_fontCSS !== undefined) return _fontCSS;
+    _fontCSS = '';
+    try {
+      const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find((l) => /fonts\.googleapis/.test(l.href));
+      if (!link || typeof fetch === 'undefined') return _fontCSS;
+      let css = await (await fetch(link.href)).text();
+      const urls = [...new Set([...css.matchAll(/url\((https:\/\/[^)]+)\)/g)].map((m) => m[1]))];
+      const map = {};
+      await Promise.all(urls.map(async (u) => { try { const b = await (await fetch(u)).arrayBuffer(); map[u] = `data:font/woff2;base64,${ab2b64(b)}`; } catch { /* skip this face */ } }));
+      _fontCSS = css.replace(/url\((https:\/\/[^)]+)\)/g, (m, u) => (map[u] ? `url(${map[u]})` : m));
+    } catch { _fontCSS = ''; }
+    return _fontCSS;
+  }
+  function nativeFigure(fontCSS) {
     const wrap = wraps[activeTab()] || wraps.net;
     const wr = wrap.getBoundingClientRect();
     const W = Math.max(1, Math.round(wr.width)), H = Math.max(1, Math.round(wr.height));
@@ -1462,15 +1481,16 @@ export function mountApp(root) {
     let cx = 0, cy = 0, cw = W, ch = H;
     if (project.pageShow()) { const fr = pageFrame.getBoundingClientRect(); cx = fr.left - wr.left; cy = fr.top - wr.top; cw = Math.max(1, Math.round(fr.width)); ch = Math.max(1, Math.round(fr.height)); }
     const bg = project.figureBg() === 'transparent' ? '' : `<rect x="${n2(cx)}" y="${n2(cy)}" width="${cw}" height="${ch}" fill="#ffffff"/>`;
-    return { svg: `<svg xmlns="${SVGNS}" width="${cw}" height="${ch}" viewBox="${n2(cx)} ${n2(cy)} ${cw} ${ch}">${bg}${out.join('')}</svg>`, w: cw, h: ch };
+    const fonts = fontCSS ? `<style>${fontCSS}</style>` : '';
+    return { svg: `<svg xmlns="${SVGNS}" width="${cw}" height="${ch}" viewBox="${n2(cx)} ${n2(cy)} ${cw} ${ch}">${fonts}${bg}${out.join('')}</svg>`, w: cw, h: ch };
   }
   const triggerDownload = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
-  function exportSVG() {
-    const { svg } = nativeFigure();
+  async function exportSVG() {
+    const { svg } = nativeFigure(await embeddedFontCSS());
     triggerDownload(URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), 'figure.svg');
   }
-  function exportPNG() {
-    const { svg, w, h } = nativeFigure();
+  async function exportPNG() {
+    const { svg, w, h } = nativeFigure(await embeddedFontCSS());
     const scale = Math.max(1, project.exportDpi() / 96);
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     const img = new Image();

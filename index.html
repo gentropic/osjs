@@ -361,15 +361,16 @@
 
     /* preview = restyle the FIGURE to camera-ready, but keep editing (rails stay).
        The same figure-restyle is reused for print below. */
-    body.preview .anno-handle, body.preview .fp-resize, body.preview .colgrip,
-    body.preview .fp-actions, body.preview .floatpanel .thead-row, body.preview .emptystate { display: none; }
+    /* hide only NON-flow chrome with display:none (no layout impact) … */
+    body.preview .anno-handle, body.preview .fp-resize, body.preview .colgrip, body.preview .emptystate { display: none; }
+    /* … but hide in-flow chrome (panel buttons, table toolbar) with VISIBILITY so
+       the layout — and therefore the table's position — does NOT shift in preview. */
+    body.preview .fp-actions, body.preview .thead-row .btn, body.preview .thead-row .mini { visibility: hidden; }
     body.preview .anno-label.sel, body.preview .floatpanel.sel, body.preview .netlegend.sel { outline: none; }
     body.preview .anno-label, body.preview .netlegend, body.preview .floatpanel, body.preview .fp-bar { cursor: default; }
     body.preview .anno-label:hover { background: transparent; }
-    body.preview .floatpanel { box-shadow: none; background: transparent; }   /* just a caption + the grid */
-    body.preview .fp-bar { background: none; border-bottom: 0; padding: 0 2px 3px; }
-    body.preview .fp-title { font-size: 11px; font-weight: 600; color: var(--ink-dim); }
-    body.preview .fp-body { padding: 0; }
+    body.preview .floatpanel { box-shadow: 0 0 0 1px var(--line-2); }
+    body.preview .fp-bar { background: none; }
     body.preview .plotarea { background-image: none; }                    /* drop the engineering grid */
 
     /* print = the active figure only, with NO layout reflow (so the absolutely-
@@ -378,12 +379,11 @@
     @media print {
       body * { visibility: hidden !important; }
       .plotwrap, .plotwrap * { visibility: visible !important; }
-      .anno-handle, .fp-resize, .colgrip, .fp-actions, .floatpanel .thead-row, .emptystate { display: none !important; }
+      .anno-handle, .fp-resize, .colgrip, .emptystate { display: none !important; }
+      .fp-actions, .thead-row .btn, .thead-row .mini { visibility: hidden !important; }   /* keep layout → table stays put */
       .anno-label.sel, .floatpanel.sel, .netlegend.sel { outline: none !important; }
-      .floatpanel { box-shadow: none !important; background: transparent !important; }
-      .fp-bar { background: none !important; border-bottom: 0 !important; padding: 0 2px 3px !important; }
-      .fp-title { font-size: 11px !important; font-weight: 600 !important; }
-      .fp-body { padding: 0 !important; }
+      .floatpanel { box-shadow: 0 0 0 1px var(--line-2) !important; }
+      .fp-bar { background: none !important; }
       .plotarea { background-image: none !important; }
       body, html { background: #fff !important; }
       @page { margin: 10mm; }
