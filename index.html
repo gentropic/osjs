@@ -76,10 +76,13 @@
     .brand .sub { color: var(--ink-faint); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
     .spacer { flex: 1; }
 
-    /* 3-column body: data · tabbed plots · inspector */
-    .body { display: grid; grid-template-columns: 264px 1fr 288px; min-height: 0; }
-    .side, .inspector { background: var(--panel); overflow-y: auto; min-height: 0; }
+    /* 3-column body: data · tabbed plots · inspector — side/inspector widths are
+       resizable (drag the gutters); minmax(0,1fr) lets the plot column shrink. */
+    .body { display: grid; grid-template-columns: var(--side-w, 264px) 5px minmax(0, 1fr) 5px var(--insp-w, 300px); min-height: 0; }
+    .side, .inspector { background: var(--panel); overflow: hidden auto; min-height: 0; }   /* never scroll sideways */
     .side { border-right: 1px solid var(--line); }
+    .gutter { background: transparent; cursor: col-resize; }
+    .gutter:hover, .gutter.drag { background: var(--line-2); }
     .inspector { border-left: 1px solid var(--line); }
 
     /* tabbed plot area */
@@ -211,11 +214,20 @@
     .props { padding: 8px 12px 16px; }
     .pbody { display: flex; flex-direction: column; gap: 9px; }
     .psec { display: contents; }  /* section wrapper: groups nodes for sideact, no layout box */
+    /* collapsible sections: click the title to fold; works despite display:contents
+       because display:none on the children still applies */
+    .psec > .istit { cursor: pointer; }
+    .psec > .istit::after { content: '▾'; float: right; font-size: 9px; color: var(--ink-faint); margin-left: 6px; }
+    .psec.collapsed > .istit::after { content: '▸'; }
+    .psec.collapsed > :not(.istit) { display: none; }
     .phead { font-weight: 700; display: flex; gap: 8px; align-items: baseline; }
     /* every property row is a uniform 2-column grid: key | control */
-    .props label { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; min-height: 24px; }
-    .props .fk { color: var(--ink-dim); }
-    .props .fv { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    /* responsive rows: key | control side-by-side, but a too-wide control wraps
+       to its own full-width line instead of overflowing the panel */
+    .props label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 24px; }
+    .props .fk { flex: 0 0 78px; color: var(--ink-dim); }
+    .props .fv { flex: 1 1 130px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; justify-content: flex-end; }
+    .props .fv .grp.small { flex-wrap: wrap; overflow: visible; }
     .props input[type="number"] { width: 58px; font: inherit; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
     .props input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid var(--line-2); border-radius: 4px; background: none; }
     .props input[type="checkbox"] { accent-color: var(--cyan); }

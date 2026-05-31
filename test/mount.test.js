@@ -33,6 +33,7 @@ test('app mounts without throwing and builds the three regions', () => {
   assert.ok(root.querySelector('.inspector'), 'inspector present');
   const headerBtns = [...root.querySelectorAll('.topbar button')].map((b) => (b.textContent || '').trim().toLowerCase());
   assert.ok(headerBtns.includes('save') && headerBtns.includes('open'), 'save/open project controls present');
+  assert.equal(root.querySelectorAll('.body > .gutter').length, 2, 'two resize gutters (data rail + inspector)');
 });
 
 test('inspector sections render IN ORDER, each owning its own controls', () => {
@@ -63,6 +64,12 @@ test('inspector sections render IN ORDER, each owning its own controls', () => {
   assert.ok(buckets['eigenvectors']?.some((l) => l.startsWith('V3')), 'V3 row present under eigenvectors');
   // nothing from density should have leaked into eigenvectors
   assert.ok(!buckets['eigenvectors']?.some((l) => l.startsWith('method')), 'density control did not leak into eigenvectors');
+
+  // sections are collapsible: clicking a title folds its psec
+  const densSec = [...pbody.querySelectorAll('.psec')].find((s) => text(s.querySelector('.istit')) === 'density / contours');
+  assert.ok(!densSec.classList.contains('collapsed'));
+  densSec.querySelector('.istit').click();
+  assert.ok(densSec.classList.contains('collapsed'), 'clicking a section title collapses it');
 
   // eigenvector + mean rows carry an orientation read-out (trend/plunge)
   const eigRows = [...pbody.querySelectorAll('.psec')].find((s) => text(s.querySelector('.istit')) === 'eigenvectors');

@@ -554,7 +554,18 @@ export function mountApp(root) {
   // ── properties (rich, per render-element) ──
   const propsHost = document.createElement('div');
   propsHost.className = 'props';
-  effect(() => { propsHost.replaceChildren(propsFor(selected())); });
+  const collapsed = new Set();   // collapsed section titles (persist across rebuilds)
+  propsHost.addEventListener('click', (e) => {
+    const istit = e.target.closest('.istit'); const sec = istit && istit.parentElement;
+    if (!sec || !sec.classList.contains('psec')) return;
+    if (sec.classList.toggle('collapsed')) collapsed.add(istit.textContent.trim()); else collapsed.delete(istit.textContent.trim());
+  });
+  effect(() => {
+    propsHost.replaceChildren(propsFor(selected()));
+    for (const sec of propsHost.querySelectorAll('.psec')) {     // re-apply collapse state
+      if (collapsed.has(sec.querySelector('.istit')?.textContent.trim())) sec.classList.add('collapsed');
+    }
+  });
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;
     if (isGroup(item)) {
@@ -594,8 +605,7 @@ export function mountApp(root) {
       ${meanSection(item)}
       ${eigenSection(item)}
       ${toolsSection(item)}
-      <div class="istit">statistics</div>
-      ${statsSection(item)}
+      <div class="psec"><div class="istit">statistics</div>${statsSection(item)}</div>
     </div>`;
   }
 
@@ -756,6 +766,30 @@ export function mountApp(root) {
     return `${project.items().length} sets · ${n} measurements · ${project.projection()}, ${project.hemisphere()} hemisphere`;
   };
 
+  // draggable column gutter — resizes the data rail (side) or inspector (insp)
+  const LAYOUT_KEY = 'osjs-layout';
+  function gutter(which) {
+    const el = document.createElement('div');
+    el.className = 'gutter';
+    el.addEventListener('pointerdown', (e) => {
+      const body = el.closest('.body'); if (!body) return;
+      const prop = which === 'side' ? '--side-w' : '--insp-w';
+      const startX = e.clientX;
+      const startW = parseFloat(getComputedStyle(body).getPropertyValue(prop)) || (which === 'side' ? 264 : 300);
+      el.setPointerCapture?.(e.pointerId); el.classList.add('drag'); e.preventDefault();
+      const move = (ev) => {
+        const w = Math.max(180, Math.min(560, which === 'side' ? startW + (ev.clientX - startX) : startW - (ev.clientX - startX)));
+        body.style.setProperty(prop, `${w}px`);
+      };
+      const up = () => {
+        el.classList.remove('drag');
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+        lsSet(LAYOUT_KEY, JSON.stringify({ side: body.style.getPropertyValue('--side-w'), insp: body.style.getPropertyValue('--insp-w') }));
+      };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    });
+    return el;
+  }
   const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
   const app = h`<div class="osjs-app"
       ondragover=${(e) => { if (hasFiles(e)) e.preventDefault(); }}
@@ -790,10 +824,12 @@ export function mountApp(root) {
         ${addHost}
         <div class="samplesrow"><span>samples</span>${SAMPLES.map((s) => h`<button class="slink" onclick=${() => loadSample(s)}>${s.label}</button>`)}</div>
       </aside>
+      ${gutter('side')}
       <main class="main">
         <div class="tabs">${tab('net', 'projection')}${tab('rose', 'rose')}${tab('fabric', 'fabric')}${tab('table', 'table')}</div>
         <div class="plotarea">${wraps.net}${wraps.rose}${wraps.fabric}${wraps.table}${emptyState}</div>
       </main>
+      ${gutter('insp')}
       <aside class="inspector">
         <div class="sect">properties</div>
         ${propsHost}
@@ -810,5 +846,9 @@ export function mountApp(root) {
   </div>`;
 
   root.replaceChildren(app);
+  try {                                            // restore saved panel widths
+    const saved = JSON.parse(lsGet(LAYOUT_KEY) || 'null'); const body = app.querySelector('.body');
+    if (saved && body) { if (saved.side) body.style.setProperty('--side-w', saved.side); if (saved.insp) body.style.setProperty('--insp-w', saved.insp); }
+  } catch { /* ignore */ }
   return { project, net, rose, fabric, select: setSelected };
 }
