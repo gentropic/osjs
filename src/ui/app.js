@@ -798,7 +798,7 @@ export function mountApp(root) {
     <div class="es-title">An empty net.</div>
     <div class="es-sub">Add measurements, open a project, or start from a sample —</div>
     <div class="es-samples">${SAMPLES.map((s) => h`<button class="btn" onclick=${() => loadSample(s)}>${s.label}</button>`)}</div>
-    <div class="es-hint">tip — in the projection view, drag between two points to measure an angle</div>
+    <div class="es-hint">tip — press <b>m</b> to measure: drag between two points for the angle + their common plane</div>
   </div></div>`;
   effect(() => { emptyState.style.display = project.items().length ? 'none' : 'flex'; });
 
@@ -809,14 +809,16 @@ export function mountApp(root) {
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
   const px = (v) => parseFloat(v) || 0;
+  let annoDragging = false;                             // suppress rebuilds while an overlay element is being dragged
   const arrowD = (tx, ty, ex, ey) => {                  // triangle at the target, pointing along the leader
     const dx = tx - ex, dy = ty - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
     const bx = tx - ux * 8, by = ty - uy * 8, nx = -uy * 4, ny = ux * 4;
     return `M${tx},${ty} L${bx + nx},${by + ny} L${bx - nx},${by - ny} Z`;
   };
-  // Recompute one annotation's leader (line + arrow) from the LIVE positions of
-  // its label and handle in the DOM — so a drag in progress keeps the line and
-  // arrowhead glued to the moving end, without recommitting coords mid-drag.
+  // Recompute one annotation's leader (line + arrow) — the single source of the
+  // edge-attach math, reused by full render, reposition, and live drag. Reads the
+  // LIVE label/handle positions from the DOM; label half-size is cached (_half) on
+  // the element at build time so this stays reflow-free in the per-frame path.
   function refreshLeader(a) {
     const line = annoLeaders.querySelector(`line[data-anno="${a.id}"]`);
     const label = annoLayer.querySelector(`[data-anno-label="${a.id}"]`);
@@ -826,8 +828,8 @@ export function mountApp(root) {
     let tx, ty;
     if (handle) { tx = px(handle.style.left); ty = px(handle.style.top); }
     else { const st = a.style(); const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]); tx = t.x; ty = t.y; }
-    const hw = (label.offsetWidth || 20) / 2 + 2, hh = (label.offsetHeight || 16) / 2 + 2;
-    const dx = tx - ax, dy = ty - ay, s = Math.min(1, 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh, 1e-6));
+    const half = label._half || [(label.offsetWidth || 20) / 2 + 2, (label.offsetHeight || 16) / 2 + 2];
+    const dx = tx - ax, dy = ty - ay, s = Math.min(1, 1 / Math.max(Math.abs(dx) / half[0], Math.abs(dy) / half[1], 1e-6));
     const ex = ax + dx * s, ey = ay + dy * s;            // attach at the label edge
     line.setAttribute('x1', tx); line.setAttribute('y1', ty); line.setAttribute('x2', ex); line.setAttribute('y2', ey);
     const arrow = annoLeaders.querySelector(`path[data-arrow="${a.id}"]`);
@@ -840,6 +842,7 @@ export function mountApp(root) {
     const st = a.style();
     if (e.button !== 0 || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
     e.preventDefault(); e.stopPropagation(); el.setPointerCapture?.(e.pointerId);
+    annoDragging = true;                                 // freeze rebuilds so this captured element isn't replaced mid-drag
     const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude'; let coords = null;
     const move = (ev) => {
       const sr = net.element.getBoundingClientRect();
@@ -848,15 +851,28 @@ export function mountApp(root) {
       coords = c; el.style.left = `${mx}px`; el.style.top = `${my}px`;
       if (st.leader) refreshLeader(a);
     };
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); if (coords) a.setStyle({ ...a.currentStyle(), [which]: coords }); };
+    const up = () => {
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up);
+      annoDragging = false;                              // before setStyle, so the resulting effect rebuilds cleanly
+      if (coords) a.setStyle({ ...a.currentStyle(), [which]: coords });
+    };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   }
-  function renderAnnos() {
-    const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return;
+  const visibleAnnos = () => project.visibleLeaves().filter((it) => it.type === 'annotation');
+  // size the overlay to sit exactly over the net SVG; returns false if not laid out
+  function fitAnnoLayer() {
+    const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return false;
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
-    if (!sr.width) { annoLayer.replaceChildren(); return; }            // not laid out (hidden tab / headless)
+    if (!sr.width) return false;                                       // hidden tab / headless
     annoLayer.style.cssText = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    const annos = project.visibleLeaves().filter((it) => it.type === 'annotation');
+    return true;
+  }
+  // full rebuild — on add / edit / select / remove. Skipped during a drag so the
+  // captured element isn't yanked out from under the pointer.
+  function renderAnnos() {
+    if (annoDragging) return;
+    if (!fitAnnoLayer()) { annoLayer.replaceChildren(); return; }
+    const annos = visibleAnnos();
     const rows = annos.map((a) => {
       const st = a.style();
       const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
@@ -869,19 +885,16 @@ export function mountApp(root) {
       el.textContent = st.text || 'note';
       el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
       el.addEventListener('pointerdown', (ev) => dragPoint(ev, a, el, 'anchor'));
-      return { a, st, el, anchor };
+      return { a, st, el };
     });
-    annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el));   // append labels first to measure
+    annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el));   // append labels first so they're measurable
     const lines = [], handles = [];
-    for (const { a, st, el, anchor } of rows) {
+    for (const { a, st, el } of rows) {
+      el._half = [(el.offsetWidth || 20) / 2 + 2, (el.offsetHeight || 16) / 2 + 2];  // cache size for reflow-free updates
       if (!st.leader) continue;
       const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]);
-      const hw = (el.offsetWidth || 20) / 2 + 2, hh = (el.offsetHeight || 16) / 2 + 2;
-      const dx = t.x - anchor.x, dy = t.y - anchor.y;
-      const s = Math.min(1, 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh, 1e-6));
-      const ex = anchor.x + dx * s, ey = anchor.y + dy * s;            // attach at the label edge
-      lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${ex}" y2="${ey}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);
-      if (st.leaderArrow) lines.push(`<path data-arrow="${a.id}" d="${arrowD(t.x, t.y, ex, ey)}" fill="${st.color || '#1d2733'}"/>`);
+      lines.push(`<line data-anno="${a.id}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);   // geometry set by refreshLeader
+      if (st.leaderArrow) lines.push(`<path data-arrow="${a.id}" fill="${st.color || '#1d2733'}"/>`);
       // handle is always present (grabbable 20px target) but its dot only shows on
       // hover or when the annotation is selected (see .anno-handle CSS)
       const hd = document.createElement('div');
@@ -894,10 +907,32 @@ export function mountApp(root) {
     }
     annoLeaders.innerHTML = lines.join('');
     annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el), ...handles);
+    for (const { a, st } of rows) if (st.leader) refreshLeader(a);     // single source of leader geometry
   }
-  net.onAfterRender = renderAnnos;
-  effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // rebuild on add/edit/select/remove
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(renderAnnos).observe(annoLayer.parentElement || document.body);
+  // lightweight per-frame path (rotation / resize) — move existing elements, no
+  // DOM churn. Falls back to a full rebuild if the element set is out of sync.
+  function repositionAnnos() {
+    if (annoDragging) return;
+    const annos = visibleAnnos();
+    if (annoLayer.querySelectorAll('[data-anno-label]').length !== annos.length
+      || annos.some((a) => !annoLayer.querySelector(`[data-anno-label="${a.id}"]`))) { renderAnnos(); return; }
+    if (!fitAnnoLayer()) return;
+    for (const a of annos) {
+      const st = a.style();
+      const label = annoLayer.querySelector(`[data-anno-label="${a.id}"]`);
+      const anchor = net.place(st.anchorSpace || 'attitude', ...(st.anchor || [0, 90]));
+      label.style.left = `${anchor.x}px`; label.style.top = `${anchor.y}px`;
+      label.classList.toggle('under', anchor.hidden);
+      if (st.leader) {
+        const handle = annoLayer.querySelector(`[data-anno-handle="${a.id}"]`);
+        const t = net.place(st.leaderSpace || 'attitude', st.leader[0], st.leader[1]);
+        if (handle) { handle.style.left = `${t.x}px`; handle.style.top = `${t.y}px`; }
+        refreshLeader(a);
+      }
+    }
+  }
+  net.onAfterRender = repositionAnnos;                                 // rotation: cheap reposition, no DOM churn
+  effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
 
   const wraps = {
     net: h`<div class="plotwrap">${net.element}${annoLayer}${legendHost}</div>`,
@@ -905,7 +940,10 @@ export function mountApp(root) {
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
   };
-  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(renderAnnos); });
+  // observe the stable plotwrap (net.element is swapped on projection rebuilds) so a
+  // window/gutter resize repositions annotations even without an intervening render
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(repositionAnnos).observe(wraps.net);
+  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionAnnos); });
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
