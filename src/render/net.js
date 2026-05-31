@@ -139,6 +139,10 @@ export class NetRenderer {
     const p = this.sn.project(conversions.lineToDcos(a, b));
     return { x: p.x * k, y: p.y * k, hidden: !!p.upper };
   }
+  // project a direction-cosine straight through (no trend/plunge round-trip, which
+  // would fold the upper hemisphere onto the lower and lose the `upper` flag — so
+  // small circles spanning both hemispheres can be drawn/clipped correctly).
+  placeDcos(d) { const k = this._k(), p = this.sn.project(d); return { x: p.x * k, y: p.y * k, hidden: !!p.upper }; }
   locate(space, x, y) {
     const k = this._k(), sx = x / k, sy = y / k;
     if (space === 'figure') { const L = this.sn.layout; return [(sx - L.center) / L.radius, (L.center - sy) / L.radius]; }

@@ -139,6 +139,32 @@ await check('band selects data within an angle of a plane', async () => {
   await page.evaluate(() => window.osjs.commitSelection(() => false));
 });
 
+await check('band edges render as clean in-circle arcs (no back-hemisphere chords)', async () => {
+  // inspect the live preview mid-drag: every band-edge point inside the primitive,
+  // no segment long enough to be a chord across the net (the old folding bug)
+  await page.locator('header button[title^="band"]').click();
+  const b = await netBox();
+  await page.mouse.move(b.cx + b.w * 0.16, b.cy - b.w * 0.1); await page.mouse.down();
+  await page.mouse.move(b.cx + b.w * 0.28, b.cy + b.w * 0.04);
+  await page.mouse.move(b.cx + b.w * 0.3, b.cy + b.w * 0.05);
+  await page.waitForTimeout(40);
+  const bad = await page.evaluate(() => {
+    const R = window.osjs.net.element.getBoundingClientRect().width / 2;
+    const out = { count: 0, maxseg: 0, rRatio: 0 };
+    for (const p of document.querySelectorAll('.sellayer .band-edge, .sellayer .cone')) {
+      out.count++;
+      const pts = p.getAttribute('points').trim().split(/\s+/).map((s) => s.split(',').map(Number));
+      for (let i = 0; i < pts.length; i++) { out.rRatio = Math.max(out.rRatio, Math.hypot(pts[i][0] - R, pts[i][1] - R) / R); if (i) out.maxseg = Math.max(out.maxseg, Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); }
+    }
+    return out;
+  });
+  await page.mouse.up();
+  assert(bad.count > 0, 'no band preview drawn');
+  assert(bad.rRatio <= 1.02, `band point outside the primitive (r/R=${bad.rRatio.toFixed(2)}) — upper-hemisphere point projected instead of hidden`);
+  assert(bad.maxseg < 40, `band has a chord-like segment (${bad.maxseg}px) — back-hemisphere folding regression`);
+  await page.evaluate(() => window.osjs.commitSelection(() => false));
+});
+
 await check('wheel zooms the viewport', async () => {
   await page.evaluate(() => window.osjs.net.resetViewport());
   const b = await netBox();

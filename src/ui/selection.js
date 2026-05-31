@@ -53,7 +53,7 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
     for (let k = 0; k <= 96; k++) {
       const th = (k / 96) * 2 * Math.PI;
       const d = vec3.normalize(vec3.add(vec3.scale(axis, Math.cos(r)), vec3.add(vec3.scale(u, Math.sin(r) * Math.cos(th)), vec3.scale(w, Math.sin(r) * Math.sin(th)))));
-      const [t, pl] = conversions.dcosToLine(d), q = net.place('attitude', t, pl);
+      const q = net.placeDcos(d);
       if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`);
     }
     if (cur.length > 1) runs.push(cur);
@@ -65,7 +65,7 @@ export function createSelection({ net, project, conversions, vec3, curves, stati
   // the back hemisphere (same convention as coneSegments)
   function arcSegments(a, b) {
     const pts = curves.arc(a, b, 48), runs = []; let cur = [];
-    for (const d of pts) { const [t, pl] = conversions.dcosToLine(d), q = net.place('attitude', t, pl); if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
+    for (const d of pts) { const q = net.placeDcos(d); if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
     if (cur.length > 1) runs.push(cur);
     return runs;
   }
