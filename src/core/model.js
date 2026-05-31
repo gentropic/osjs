@@ -307,6 +307,10 @@ export class FaultSet extends DataItem {
       out.push(point(f.p, { ...st, pointFill: 'filled', size: 4 }, { item: this.id, datum: i, axis: 'P' }));
       out.push(point(f.t, { ...st, pointFill: 'open', size: 4 }, { item: this.id, datum: i, axis: 'T' }));
     });
+    if (L.dihedra) {   // Angelier right-dihedra: P/T compatibility density (same rasteriser as Fisher)
+      const def = F.filter((f) => f.defined);
+      if (def.length) out.push(heatmap(def.map((f) => f.normal), { dihedra: true, slips: def.map((f) => f.slip) }, st, { item: this.id, dihedra: true }));
+    }
     if (L.michael) this._paleostress(out);
   }
 
@@ -329,6 +333,7 @@ FaultSet.LAYERS = [
   { key: 'planes', label: 'fault planes', default: true },
   { key: 'slip', label: 'slickenlines', default: true },
   { key: 'pt', label: 'P / T axes', default: false },
+  { key: 'dihedra', label: 'right dihedra', default: false },
   { key: 'michael', label: 'paleostress σ (experimental)', default: false },
   ...COMMON_LAYERS,
 ];

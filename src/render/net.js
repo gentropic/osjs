@@ -12,8 +12,15 @@
 
 import * as bearing from '../../vendor/bearing.mjs';
 
-const { Stereonet, conversions, mat3, color, vec3, curves } = bearing;
+const { Stereonet, conversions, mat3, color, vec3, curves, fault } = bearing;
 const DEG = 180 / Math.PI;
+
+// diverging colour for right-dihedra: compression (t<0) blue ↔ extension (t>0) red
+function dihedraColor(t) {
+  const x = Math.max(-1, Math.min(1, t));
+  if (x >= 0) { const g = Math.round(60 + 195 * (1 - x)); return `rgba(210,${g},${g},0.72)`; }
+  const g = Math.round(60 + 195 * (1 + x)); return `rgba(${g},${g},210,0.72)`;
+}
 
 // Colour rides on the SVG attribute (so it can vary per measurement for
 // colour-by-data); the host's injected `ds-<id>` stylesheet (see ui/app.js)
@@ -121,6 +128,15 @@ export class NetRenderer {
       case 'text': { const [t, pl] = conversions.dcosToLine(p.dir); sn.text(t, pl, p.content, st); break; }
       case 'contour': sn.contour(p.dcos, { stroke: st.color || '#555', strokeWidth: 0.8, ...p.opts }); break;
       case 'heatmap': {
+        if (p.opts.dihedra) {   // right-dihedra: a precomputed P/T grid through the same rasteriser
+          const R = sn.rotation, rot = (v) => (R ? mat3.transformVec3(R, v) : v);
+          const planes = p.dcos.map(rot), slips = (p.opts.slips || []).map(rot);
+          if (!planes.length) break;
+          const g = fault.dihedraGrid(planes, slips, { projection: this._proj, gridSize: 44 });
+          let m = 0; for (const v of g.grid) if (!Number.isNaN(v) && Math.abs(v) > m) m = Math.abs(v);
+          sn.heatmap(planes, { grid: g, max: m || 1, threshold: -2, color: dihedraColor });
+          break;
+        }
         const ramp = p.opts.ramp;
         const colorFn = ramp && ramp !== 'item' ? (t) => color.sampleScale(ramp, t) : (t) => rgba(st.color, 0.1 + 0.8 * t);
         sn.heatmap(p.dcos, { ...p.opts, color: colorFn });

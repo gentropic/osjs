@@ -206,6 +206,11 @@ test('faults: planes + slickenlines + P/T axes; paleostress gated to layer + ≥
   const pt = f.contribute('net').filter((p) => p.source.axis);
   assert.equal(pt.length, 8);                                             // P + T per fault
 
+  f.toggleLayer('dihedra');
+  const dih = f.contribute('net').filter((p) => p.kind === 'heatmap' && p.opts.dihedra);
+  assert.equal(dih.length, 1);                                            // one right-dihedra raster
+  assert.equal(dih[0].opts.slips.length, dih[0].dcos.length);             // slips aligned to planes
+
   f.toggleLayer('michael');
   const sigma = f.contribute('net').filter((p) => p.source.stress != null);
   assert.equal(sigma.length, 3);                                          // σ1 σ2 σ3

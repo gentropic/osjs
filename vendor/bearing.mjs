@@ -668,6 +668,7 @@ var defaults = {
 // src/contouring.js
 var DEG2 = Math.PI / 180;
 function densityGrid(dcos, options = {}) {
+  if (options.grid) return options.grid;
   const {
     projection = "equal-area",
     rotation = null,
