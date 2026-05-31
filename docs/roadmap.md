@@ -300,6 +300,54 @@ respect the active selection; mobile long-press; suppress the native browser men
 only over the app surfaces. Also a candidate home for rose/fabric/table-specific
 actions (e.g. rose: set this bin as start; table: filter by this value).
 
+## QGIS / external-host bridge (a stereonet for a real GIS)
+
+"A stereonet is a tiny GIS" — so closing the loop with an actual GIS (QGIS) is on
+theme: a point layer of structural measurements ↔ the interactive net. OSJS is
+host-agnostic by design (clean I/O seam), so QGIS is just a third host surface
+(like the auditable Works surface). **Keep all GIS specifics — CRS, feature
+geometry, Qt — on the plugin side; OSJS never learns the word "QGIS."**
+
+**Tiers (do the cheap one first; only climb when the workflow demands it):**
+- **T0 — structured copy/paste (already works).** Copy QGIS's attribute table →
+  paste into OSJS (TSV import detects `dip dir`/`dip`); export OSJS → CSV → join
+  back. Just needs a documented field-naming convention. ~80% of the value, zero plugin.
+- **T1 — thin PyQGIS bridge plugin (no webview).** GIS-aware glue the clipboard
+  can't do: map the active/selected point layer's fields → dip-dir/dip, carry
+  attributes + a **stable `fid`** as OSJS data columns, hand off to OSJS, and —
+  the valuable half — **write back**: an OSJS selection/tag → a `set` field joined
+  to features by `fid` ("lasso a cluster on the net → those map points light up").
+- **T2 — live two-way.** Only if "they stay in sync" is the actual goal.
+
+**Transport — the part we reasoned through, so we don't relearn it:**
+- **Do NOT have a public origin call loopback.** A page on `https://gentropic.org`
+  reaching `http://localhost:PORT` is blocked not by CORS (headers are trivial) but
+  by **mixed content** (https→http) and **Private Network Access** (Chrome gates
+  public→loopback; needs `Access-Control-Allow-Private-Network`, secure context, and
+  is being tightened in waves). That's the exact pattern browsers are hardening
+  against — fragile, moving target. Avoid it.
+- **Two shapes that dodge the whole swamp:**
+  1. *Connectionless hosted* — `gentropic.org/osjs` stays a pure web app; QGIS
+     exchanges via files/clipboard. The public page never touches localhost. Cleanest
+     when live wiring isn't needed.
+  2. *Localhost serves BOTH* — the tiny plugin server returns OSJS's bundled
+     `dist/osjs.html` **and** the JSON API on the same `127.0.0.1:PORT`. Same origin,
+     both http, both loopback → **no CORS, no mixed content, no PNA, no QtWebEngine**.
+     One extra route; less friction than fighting the security model.
+- **Plain HTTP request/response is enough** (OSJS GETs the layer, POSTs back
+  selections/tags). A **websocket** only earns its keep for QGIS *pushing*
+  spontaneously (live select-here-highlights-there); `QWebSocketServer` (Qt-native,
+  event-loop friendly) or a threaded `http.server`+SSE fallback if so.
+- The transport is independent of embedding: pick HTTP-on-localhost now and a future
+  docked `QWebEngineView` just points at the same `localhost:PORT` — protocol unchanged.
+
+**What OSJS needs**: a thin **host-bridge** adapter module (connect, small versioned
+JSON messages: load-measurements / here's-the-selection / tag), the same concept as
+the auditable surface bridge (A-Bus) — one host seam, not two bespoke ones. Plus
+carry a stable `fid` column through import → tag/extract → export for round-trip
+write-back. Prior art exists (qgSurf, Geotrace, mplstereonet-in-QGIS); OSJS's
+differentiator is being the *interactive composer*, not a static plot.
+
 ## Optional dessert
 - Richer **markdown** in annotations (bold/italic/code, multiline) — currently plain.
 - **Export polish**: legend + title/caption baked into SVG/PNG output.
