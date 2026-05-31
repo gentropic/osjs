@@ -135,7 +135,7 @@ export function mountApp(root) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = e.key.toLowerCase();
-    if (k === 's') setMode('select'); else if (k === 'l') setMode('lasso'); else if (k === 'c') setMode('cone'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
+    if (k === 's') setMode('select'); else if (k === 'l') setMode('lasso'); else if (k === 'c') setMode('cone'); else if (k === 'b') setMode('rect'); else if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
     else if (k === '0') net.resetView();
     else if (k === 'escape') setSelected(null);
   });
@@ -1182,6 +1182,14 @@ export function mountApp(root) {
   net.onContextMenu = ({ clientX, clientY, dcos, id }) => {
     const item = id ? project.items().find((x) => x.id === id) : null;
     const items = [];
+    if (selCount()) {
+      items.push({ label: `Selection (${selCount()})`, submenu: [
+        { label: 'Extract → new layer', onClick: extractSelection },
+        { label: 'Invert', onClick: invertSelection },
+        { label: 'Clear', onClick: () => setSelection(new Map()) },
+      ] });
+      items.push({ separator: true });
+    }
     if (item) {
       items.push({ label: `Select “${item.currentName()}”`, onClick: () => setSelected(item) });
       if (dcos && tabular(item)) items.push({ label: 'Identify nearest datum', onClick: () => { setSelected(item); const i = nearestDatum(item, dcos); if (i >= 0) flashDatum(item, i); } });
@@ -1371,45 +1379,63 @@ export function mountApp(root) {
     if (regionPreview) out.push(regionPreview);
     selSvg.innerHTML = out.join('');
   }
-  // cone outline (small circle of angular radius r about axis) as CSS-px points
-  function conePath(axis, r) {
-    let u = vec3.normalize(vec3.cross(axis, Math.abs(axis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
-    const w = vec3.cross(axis, u); const pts = [];
-    for (let k = 0; k <= 48; k++) { const th = (k / 48) * 2 * Math.PI; const d = vec3.normalize(vec3.add(vec3.scale(axis, Math.cos(r)), vec3.add(vec3.scale(u, Math.sin(r) * Math.cos(th)), vec3.scale(w, Math.sin(r) * Math.sin(th))))); const [t, pl] = conversions.dcosToLine(d); const q = net.place('attitude', t, pl); pts.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`); }
-    return pts;
+  // cone outline (small circle of radius r about axis) → polyline segments, BROKEN
+  // where it crosses to the back hemisphere (so it doesn't draw spurious chords)
+  function coneSegments(axis, r) {
+    const u = vec3.normalize(vec3.cross(axis, Math.abs(axis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])), w = vec3.cross(axis, u);
+    const runs = []; let cur = [];
+    for (let k = 0; k <= 96; k++) {
+      const th = (k / 96) * 2 * Math.PI;
+      const d = vec3.normalize(vec3.add(vec3.scale(axis, Math.cos(r)), vec3.add(vec3.scale(u, Math.sin(r) * Math.cos(th)), vec3.scale(w, Math.sin(r) * Math.sin(th)))));
+      const [t, pl] = conversions.dcosToLine(d), q = net.place('attitude', t, pl);
+      if (q.hidden) { if (cur.length > 1) runs.push(cur); cur = []; } else cur.push(`${q.x.toFixed(1)},${q.y.toFixed(1)}`);
+    }
+    if (cur.length > 1) runs.push(cur);
+    return runs;
   }
   const pointInPoly = (x, y, poly) => { let inside = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
-  function commitSelection(test, additive) {
-    const next = additive ? new Map([...selection()].map(([k, v]) => [k, new Set(v)])) : new Map();
+  // combine: 'replace' | 'add' | 'subtract'
+  function commitSelection(test, combine) {
+    const base = combine === 'add' || combine === 'subtract' ? new Map([...selection()].map(([k, v]) => [k, new Set(v)])) : new Map();
     for (const it of selItems()) {
-      const ds = it.dcos(); const hit = next.get(it.id) || new Set();
-      for (let i = 0; i < ds.length; i++) { const [t, p] = conversions.dcosToLine(ds[i]); const q = net.place('attitude', t, p); if (!q.hidden && test(q.x, q.y, ds[i])) hit.add(i); }
-      if (hit.size) next.set(it.id, hit); else next.delete(it.id);
+      const ds = it.dcos(); const hit = base.get(it.id) || new Set();
+      for (let i = 0; i < ds.length; i++) { const [t, p] = conversions.dcosToLine(ds[i]); const q = net.place('attitude', t, p); if (!q.hidden && test(q.x, q.y, ds[i])) { if (combine === 'subtract') hit.delete(i); else hit.add(i); } }
+      if (hit.size) base.set(it.id, hit); else base.delete(it.id);
     }
-    setSelection(next);
+    setSelection(base);
   }
-  // pointer drag on the selection layer (active only in lasso/cone mode)
+  // pointer drag on the selection layer (active only in a selection mode). Re-arms
+  // after each gesture (capture released); Shift = add, Alt/Ctrl = subtract.
   function wireSelect() {
-    let lasso = null, cone = null;
+    let drag = null;
     const local = (e) => { const r = net.element.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const combineOf = (e) => (e.shiftKey ? 'add' : (e.altKey || e.ctrlKey || e.metaKey) ? 'subtract' : 'replace');
     selLayer.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; e.preventDefault(); selLayer.setPointerCapture?.(e.pointerId);
-      if (mode() === 'lasso') { lasso = [local(e)]; }
-      else if (mode() === 'cone') { const [x, y] = local(e); const c = net.locate('attitude', x, y); cone = c ? { axis: conversions.lineToDcos(c[0], c[1]), r: 0 } : null; }
+      const m = mode(), p = local(e), cmb = combineOf(e);
+      if (m === 'lasso') drag = { tool: 'lasso', pts: [p], cmb };
+      else if (m === 'rect') drag = { tool: 'rect', start: p, cmb };
+      else if (m === 'cone') { const c = net.locate('attitude', p[0], p[1]); drag = c ? { tool: 'cone', axis: conversions.lineToDcos(c[0], c[1]), r: 0, cmb } : null; }
     });
     selLayer.addEventListener('pointermove', (e) => {
-      if (lasso) { lasso.push(local(e)); regionPreview = `<polygon class="lasso" points="${lasso.map((p) => p.join(',')).join(' ')}"/>`; renderSelection(); }
-      else if (cone) { const [x, y] = local(e); const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); cone.r = Math.acos(Math.max(-1, Math.min(1, Math.abs(vec3.dot(cone.axis, d))))); regionPreview = `<polyline class="cone" points="${conePath(cone.axis, cone.r).join(' ')}"/>`; renderSelection(); } }
+      if (!drag) return; const [x, y] = local(e);
+      if (drag.tool === 'lasso') { drag.pts.push([x, y]); regionPreview = `<polygon class="lasso" points="${drag.pts.map((p) => p.join(',')).join(' ')}"/>`; }
+      else if (drag.tool === 'rect') { const [sx, sy] = drag.start; drag.rect = [Math.min(sx, x), Math.min(sy, y), Math.abs(x - sx), Math.abs(y - sy)]; regionPreview = `<rect class="lasso" x="${drag.rect[0]}" y="${drag.rect[1]}" width="${drag.rect[2]}" height="${drag.rect[3]}"/>`; }
+      else if (drag.tool === 'cone') { const c = net.locate('attitude', x, y); if (c) { const d = conversions.lineToDcos(c[0], c[1]); drag.r = Math.acos(Math.max(-1, Math.min(1, Math.abs(vec3.dot(drag.axis, d))))); regionPreview = coneSegments(drag.axis, drag.r).map((run) => `<polyline class="cone" points="${run.join(' ')}"/>`).join(''); } }
+      renderSelection();
     });
     selLayer.addEventListener('pointerup', (e) => {
-      const additive = e.shiftKey;
-      if (lasso && lasso.length > 2) { const poly = lasso; commitSelection((x, y) => pointInPoly(x, y, poly), additive); }
-      else if (cone && cone.r > 0) { const ax = cone.axis, r = cone.r; commitSelection((x, y, v) => Math.acos(Math.min(1, Math.abs(vec3.dot(ax, v)))) <= r, additive); }
-      lasso = cone = null; regionPreview = null; renderSelection();
+      selLayer.releasePointerCapture?.(e.pointerId);
+      if (drag) {
+        if (drag.tool === 'lasso' && drag.pts.length > 2) { const poly = drag.pts; commitSelection((x, y) => pointInPoly(x, y, poly), drag.cmb); }
+        else if (drag.tool === 'rect' && drag.rect) { const [rx, ry, rw, rh] = drag.rect; commitSelection((x, y) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh, drag.cmb); }
+        else if (drag.tool === 'cone' && drag.r > 0) { const ax = drag.axis, r = drag.r; commitSelection((x, y, v) => Math.acos(Math.min(1, Math.abs(vec3.dot(ax, v)))) <= r, drag.cmb); }
+      }
+      drag = null; regionPreview = null; renderSelection();
     });
   }
   wireSelect();
-  effect(() => { const m = mode(); selLayer.style.pointerEvents = (m === 'lasso' || m === 'cone') ? 'auto' : 'none'; });
+  effect(() => { const m = mode(); selLayer.style.pointerEvents = (m === 'lasso' || m === 'cone' || m === 'rect') ? 'auto' : 'none'; });
   effect(() => { selection(); renderSelection(); });   // redraw highlights on change
   const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); renderSelection(); };
   effect(() => { project.pageShow(); project.pageAspect(); project.figureBg(); repositionPage(); });   // re-place the page on config change
@@ -1608,7 +1634,7 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside', cone: 'cone (c): click an axis, drag the radius → select data within that angle', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
+  const MODE_TIP = { select: 'select (s): click a layer to select · empty to deselect · Alt-drag to rotate', lasso: 'lasso (l): drag a freehand loop to select the data inside · Shift add · Alt subtract', cone: 'cone (c): click an axis, drag the radius → select data within that angle · Shift add · Alt subtract', rect: 'rect (b): drag a box to select the data inside · Shift add · Alt subtract', measure: 'measure (m): click two points → angle + their common plane', rotate: 'rotate (r): drag to spin the net', pick: 'pick (p): click to add a measurement to the selected layer' };
   const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${MODE_TIP[m]} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
@@ -1709,7 +1735,10 @@ export function mountApp(root) {
       <span class="spacer"></span>
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
-        ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+        ${modeSeg('select', 'select')}${modeSeg('lasso', 'lasso')}${modeSeg('cone', 'cone')}${modeSeg('rect', 'rect')}
+      </div>
+      <div class="grp" title="net tools">
+        ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
         <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
         <button class="seg" title="fit — reset zoom & pan (scroll to zoom · middle-drag to pan)" onclick=${() => net.resetViewport()}>⤢</button>
       </div>
