@@ -956,7 +956,7 @@ export function mountApp(root) {
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
     const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
-    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box; pageLayer.style.cssText = box; selLayer.style.cssText = box;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box; brushLayer.style.cssText = box; decorLayer.style.cssText = box; pageLayer.style.cssText = box;   // selLayer spans the whole plot (CSS inset:0)
     return true;
   }
   // the figure page frame: a figure-space rectangle behind the net that pans/zooms
@@ -1370,7 +1370,11 @@ export function mountApp(root) {
   // matching net.place); repositioned with the rest of the overlay
   let regionPreview = null;
   function renderSelection() {
-    if (!fitOverlay()) { selSvg.replaceChildren(); return; }
+    const wrap = net.element.parentElement, nr = net.element.getBoundingClientRect();
+    if (!wrap || !nr.width) { selSvg.innerHTML = ''; return; }
+    // selLayer spans the whole plot; net.place is net-relative → translate by the
+    // net's offset within the plot so lasso/cone/rings sit on the net correctly.
+    const wrr = wrap.getBoundingClientRect(), offX = nr.left - wrr.left, offY = nr.top - wrr.top;
     const sel = selection(); const out = [];
     for (const it of selItems()) {
       const idx = sel.get(it.id); if (!idx || !idx.size) continue;
@@ -1378,7 +1382,7 @@ export function mountApp(root) {
       for (const i of idx) { const v = ds[i]; if (!v) continue; const [t, p] = conversions.dcosToLine(v); const pt = net.place('attitude', t, p); out.push(`<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="7" class="sel-ring${pt.hidden ? ' back' : ''}"/>`); }
     }
     if (regionPreview) out.push(regionPreview);
-    selSvg.innerHTML = out.join('');
+    selSvg.innerHTML = `<g transform="translate(${offX.toFixed(1)} ${offY.toFixed(1)})">${out.join('')}</g>`;
   }
   // cone outline (small circle of radius r about axis) → polyline segments, BROKEN
   // where it crosses to the back hemisphere (so it doesn't draw spurious chords)
