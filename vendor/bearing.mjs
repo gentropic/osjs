@@ -1375,6 +1375,7 @@ var Stereonet = class _Stereonet {
     this.projection = options.projection || "equal-area";
     this.net = options.net || "equatorial";
     this.gridSpacing = options.gridSpacing || 10;
+    this.hemisphere = options.hemisphere || "lower";
     this.rotation = options.rotation ?? (options.center ? _Stereonet.rotationFromCenter(options.center[0], options.center[1]) : options.northPole ? _Stereonet.rotationFromNorthPole(options.northPole[0], options.northPole[1], options.northPole[2] || 0) : null);
     this._instanceStyle = options.style || null;
     this._classPrefix = options.classPrefix !== void 0 ? options.classPrefix : "bearing";
@@ -1494,8 +1495,9 @@ var Stereonet = class _Stereonet {
       py *= k;
     }
     const inverseFn = this.projection === "equal-angle" ? inverse2 : inverse;
-    const d = inverseFn(px, py);
-    if (!d) return null;
+    const lower = inverseFn(px, py);
+    if (!lower) return null;
+    const d = this._reflect(lower);
     return this.rotation ? transformVec3(transpose(this.rotation), d) : d;
   }
   /**
@@ -1528,7 +1530,7 @@ var Stereonet = class _Stereonet {
     if (r23 < lim) {
       const inverseFn = this.projection === "equal-angle" ? inverse2 : inverse;
       const d = inverseFn(px, py);
-      if (d) return d;
+      if (d) return this._reflect(d);
     }
     const r = Math.sqrt(r23) || 1;
     return [px / r, py / r, 0];
@@ -1567,16 +1569,24 @@ var Stereonet = class _Stereonet {
     this._instanceStyle = style;
     return this;
   }
-  /** Rotate a 3D point by the stereonet's rotation matrix. */
+  /**
+   * Upper-hemisphere view = lower-hemisphere projection of the z-reflected vector
+   * (upper_project([x,y,z]) === lower_project([x,y,−z])). For 'lower' this is a
+   * no-op, so the default path is untouched. Its own inverse.
+   */
+  _reflect(p) {
+    return this.hemisphere === "upper" ? [p[0], p[1], -p[2]] : p;
+  }
+  /** Rotate a 3D point by the stereonet's rotation, then orient to the hemisphere. */
   _rotate(p) {
-    return this.rotation ? transformVec3(this.rotation, p) : p;
+    return this._reflect(this.rotation ? transformVec3(this.rotation, p) : p);
   }
   /**
-   * Process a 3D curve: rotate, clip to lower hemisphere, project to SVG.
-   * Returns array of SVG polyline coordinate arrays (one per visible segment).
+   * Process a 3D curve: rotate + hemisphere-orient, clip to the shown hemisphere,
+   * project to SVG. Returns one SVG coordinate array per visible segment.
    */
   _projectCurve(points3d) {
-    const rotated = this.rotation ? points3d.map((p) => transformVec3(this.rotation, p)) : points3d;
+    const rotated = points3d.map((p) => this._reflect(this.rotation ? transformVec3(this.rotation, p) : p));
     const segments = clipToLowerHemisphere(rotated);
     return segments.map(
       (seg) => seg.map((p) => {

@@ -54,7 +54,8 @@ export class NetRenderer {
     const prevRot = this.sn ? this.sn.rotation : null;     // keep the view across rebuilds
     this._proj = projection;
     this._grid = this.project.gridSpacing();
-    const next = new Stereonet({ size: this._size, projection, classPrefix: 'osjs', gridSpacing: this._grid });
+    this._hemi = this.project.hemisphere();
+    const next = new Stereonet({ size: this._size, projection, classPrefix: 'osjs', gridSpacing: this._grid, hemisphere: this._hemi });
     if (prevRot) next.setRotation(prevRot);
     const el = next.element();
     if (this._el && this._el.parentNode) this._el.replaceWith(el);
@@ -69,7 +70,7 @@ export class NetRenderer {
 
   render() {
     const proj = this.project.projection();
-    if (proj !== this._proj || this.project.gridSpacing() !== this._grid) this._rebuild(proj);
+    if (proj !== this._proj || this.project.gridSpacing() !== this._grid || this.project.hemisphere() !== this._hemi) this._rebuild(proj);
     const sn = this.sn;
     sn.clear();
     sn.clearContours();

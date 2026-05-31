@@ -524,6 +524,7 @@ export function mountApp(root) {
   const viewCtl = h`<span class="fv">${num(view.t, 0, 360, 1, (e) => { view.t = +e.target.value; })}${num(view.p, 0, 90, 1, (e) => { view.p = +e.target.value; })}<button class="mini" onclick=${() => net.setView(view.t, view.p)}>view</button><button class="mini" onclick=${() => net.resetView()}>reset</button></span>`;
   const settings = h`<div class="settings">
     <div class="istit">net</div>
+    <label>hemisphere <span class="grp small">${projSegBtn(project.hemisphere, project.setHemisphere, 'lower', 'lower')}${projSegBtn(project.hemisphere, project.setHemisphere, 'upper', 'upper')}</span></label>
     <label>grid <select onchange=${(e) => project.setGridSpacing(+e.target.value)}>
       ${[5, 10, 15, 20, 30].map((w) => h`<option value=${w} ${w === project.gridSpacing() ? 'selected' : null}>${w}°</option>`)}
     </select></label>
@@ -662,7 +663,7 @@ export function mountApp(root) {
   });
   const countText = () => {
     let n = 0; for (const it of project.items()) n += it.measurements().length;
-    return `${project.items().length} sets · ${n} measurements · ${project.projection()}, lower hemisphere`;
+    return `${project.items().length} sets · ${n} measurements · ${project.projection()}, ${project.hemisphere()} hemisphere`;
   };
 
   const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
