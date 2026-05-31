@@ -877,25 +877,44 @@ export function mountApp(root) {
     // blur) appends a real row pre-filled with what you typed. Only in edit
     // mode; when floating, fill the panel's spare height so a resized-tall table
     // reads as "more room to type" rather than dead space.
-    if (edit) {
-      const commitGhost = (k, isGeom, ci, v) => {
-        if (v === '' || v == null) return;
-        const newCols = item.currentColumns().map((co) => ({ name: co.name, values: [...co.values, ''] }));
-        const newGeom = geom.map(() => 0);
-        if (isGeom) { const n = parseFloat(v); if (!Number.isFinite(n)) return; newGeom[k] = n; }
-        else newCols[ci].values[newCols[ci].values.length - 1] = v;
+    // Floating panels always show them (so a resized-tall table is "room to type");
+    // the tab shows two only in edit mode. A whole ghost row commits at once (Enter,
+    // or focus leaving the row) so multi-column geometry — dip dir + dip — works in
+    // one go; the cells are tagged data-grow/data-gk/data-gc so the commit can read
+    // its siblings. Always editable inputs (adding a row is an edit), even when the
+    // existing rows are read-only.
+    if (edit || inPanel) {
+      const commitGhostRow = (dt, grow) => {
+        if (!dt) return;
+        const ins = [...dt.querySelectorAll(`input[data-grow="${grow}"]`)];
+        const newGeom = geom.map(() => 0), colVals = item.currentColumns().map(() => ''); let any = false;
+        for (const inp of ins) {
+          const v = inp.value.trim(); if (!v) continue;
+          if (inp.dataset.gk != null) { const n = parseFloat(v); if (Number.isFinite(n)) { newGeom[+inp.dataset.gk] = n; any = true; } }
+          else if (inp.dataset.gc != null) { colVals[+inp.dataset.gc] = v; any = true; }
+        }
+        if (!any) return;
+        ins.forEach((i) => { i.value = ''; });   // so a trailing blur on the (now-detached) row can't re-commit it
         item.setMeasurements([...item.currentMeasurements(), newGeom]);
-        item.setColumns(newCols);
+        item.setColumns(item.currentColumns().map((co, ci) => ({ name: co.name, values: [...co.values, colVals[ci] || ''] })));
         bumpTable();
+        // re-focus the first ghost cell after the rebuild → fast sequential entry
+        const host = inPanel ? panelLayer : tableHost, raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f) => setTimeout(f, 0);
+        raf(() => { const d = host.querySelector(`.dtable[data-item="${item.id}"]`), f = d && d.querySelector('input[data-grow="0"]'); if (f) f.focus(); });
       };
+      const onGhostKey = (e) => { if (e.key === 'Enter') { e.preventDefault(); commitGhostRow(e.target.closest('.dtable'), e.target.dataset.grow); } };
+      // commit on blur only once focus has actually left the table — tabbing/clicking
+      // between this row's own cells must not commit a half-typed row (relatedTarget
+      // is unreliable, so defer and check the settled activeElement)
+      const onGhostBlur = (e) => { const dt = e.target.closest('.dtable'), grow = e.target.dataset.grow; setTimeout(() => { if (dt && document.activeElement && dt.contains(document.activeElement)) return; commitGhostRow(dt, grow); }, 0); };
       const ROW_H = 22;
-      let ghostN = 2;
+      let ghostN = edit && !inPanel ? 2 : 6;
       if (inPanel) { const th = item.currentParams().tableH; if (th) ghostN = Math.max(1, Math.min(80, Math.ceil((th - 28 - meas.length * ROW_H) / ROW_H))); }
       for (let g = 0; g < ghostN; g++) {
         cells.push(h`<div class="td ghostnum"></div>`);
-        geom.forEach((gg, k) => cells.push(h`<div class="td ghost"><input class="tc" placeholder=${g === 0 ? gg : ''} onchange=${(e) => { commitGhost(k, true, 0, e.target.value); }}></div>`));
-        cols.forEach((c, ci) => cells.push(h`<div class="td ghost"><input class="tc" placeholder=${g === 0 ? c.name : ''} onchange=${(e) => { commitGhost(0, false, ci, e.target.value); }}></div>`));
-        cells.push(h`<div class="td tdel ghost"></div>`);
+        geom.forEach((gg, k) => cells.push(h`<div class="td ghost"><input class="tc" data-grow=${g} data-gk=${k} placeholder=${g === 0 ? gg : ''} onkeydown=${onGhostKey} onblur=${onGhostBlur}></div>`));
+        cols.forEach((c, ci) => cells.push(h`<div class="td ghost"><input class="tc" data-grow=${g} data-gc=${ci} placeholder=${g === 0 ? c.name : ''} onkeydown=${onGhostKey} onblur=${onGhostBlur}></div>`));
+        if (edit) cells.push(h`<div class="td tdel ghost"></div>`);
       }
     }
     // hover a row → brush its datum on the net (delegated; leaves clear the ring)

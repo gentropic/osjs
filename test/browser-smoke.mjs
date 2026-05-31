@@ -208,6 +208,28 @@ await check('composed export builds a real SVG with net + overlay', async () => 
   assert(/<text[^>]*>note<\/text>|>note</.test(fig.svg) || /<svg/.test(fig.svg.slice(60)), 'net not embedded');
 });
 
+await check('floating panel: ghost rows let you add data without toggling edit', async () => {
+  const id = await page.evaluate(() => {
+    const it = window.osjs.project.items().find((x) => x.type !== 'annotation');
+    it.setParams({ tableOpen: true, tableH: 420 });     // float it tall, read-only
+    return it.id;
+  });
+  await page.waitForTimeout(60);
+  const panel = page.locator(`.floatpanel[data-panel="${id}"]`);
+  const ghosts = panel.locator('.dtable .td.ghost input.tc');
+  assert(await ghosts.count() > 4, 'a resized-tall panel did not fill the empty space with ghost rows');
+  const n0 = await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).currentMeasurements().length, id);
+  const row0 = panel.locator('.dtable .td.ghost input.tc[data-grow="0"]');
+  await row0.nth(0).fill('300'); await row0.nth(1).fill('10');
+  await row0.nth(1).press('Enter');
+  await page.waitForTimeout(60);
+  const added = await page.evaluate((i) => { const m = window.osjs.project.items().find((x) => x.id === i).currentMeasurements(); return m[m.length - 1]; }, id);
+  const n1 = await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).currentMeasurements().length, id);
+  assert(n1 === n0 + 1, 'Enter on a ghost row did not append a measurement');
+  assert(added[0] === 300 && added[1] === 10, `whole ghost row not committed (got ${added})`);
+  await page.evaluate((i) => window.osjs.project.items().find((x) => x.id === i).setParams({ tableOpen: false }), id);
+});
+
 await check('legend exports from the scene at real geometry (names + box)', async () => {
   const svg = await page.evaluate(() => window.osjs.nativeFigure().svg);
   assert(/>bedding</.test(svg) && /></.test(svg), 'legend layer name missing from native export');

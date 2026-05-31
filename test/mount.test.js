@@ -618,9 +618,13 @@ test('table: ghost rows let you type a new measurement in place', async () => {
   await tick();
   const ghosts = root.querySelectorAll('.dtable .td.ghost input.tc');
   assert.ok(ghosts.length > 0, 'edit mode shows typeable ghost rows');
+  // a whole ghost row commits at once: type both geometry cells, then Enter
+  const row0 = [...ghosts].filter((i) => i.dataset.grow === '0');
   const n0 = item.currentMeasurements().length;
-  ghosts[0].value = '123'; ghosts[0].dispatchEvent(new window.Event('change'));
+  row0[0].value = '123'; row0[1].value = '45';
+  row0[1].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await tick();
-  assert.equal(item.currentMeasurements().length, n0 + 1, 'committing a ghost cell appends a measurement');
-  assert.equal(item.currentMeasurements()[n0][0], 123, 'the typed value lands in the new row');
+  assert.equal(item.currentMeasurements().length, n0 + 1, 'Enter commits the ghost row as one measurement');
+  assert.deepEqual(item.currentMeasurements()[n0], [123, 45], 'both typed cells land in the new row');
 });
+
