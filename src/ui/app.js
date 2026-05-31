@@ -756,7 +756,7 @@ export function mountApp(root) {
   // Rebuilds on selection / edit-mode / structural change only — cell edits write
   // through to the model (read untracked here) so they don't rebuild + lose focus.
   effect(() => { tableVer(); const it = selected(); const tabular = it && !isGroup(it) && it.type !== 'annotation'; tableHost.replaceChildren(tabular ? dataTable(it, tableEdit()) : h`<div class="muted">${() => { const s = selected(); return isGroup(s) ? 'groups have no data table' : s && s.type === 'annotation' ? 'annotations have no data table' : 'no dataset selected'; }}</div>`); });
-  function dataTable(item, edit) {
+  function dataTable(item, edit, inPanel) {
     const geom = item.constructor.GEOM || ['a', 'b'];
     const cols = item.currentColumns();
     const meas = item.currentMeasurements();
@@ -787,6 +787,7 @@ export function mountApp(root) {
     return h`<div class="tablebox">
       <div class="thead-row"><span class="tcount">${meas.length} rows · ${cols.length} columns</span>
         ${edit ? h`<span class="ttoolbar"><button class="mini" onclick=${addRow}>+ row</button><button class="mini" onclick=${addCol}>+ column</button></span>` : ''}
+        ${inPanel ? '' : h`<button class="btn" title="float this table over the plot" onclick=${() => { item.setParams({ tableOpen: true }); setActiveTab('net'); bumpTable(); }}>float ⧉</button>`}
         <button class=${() => (tableEdit() ? 'btn on' : 'btn')} onclick=${() => setTableEdit((v) => !v)}>edit</button></div>
       <div class="tscroll"><div class="dtable" style=${{ gridTemplateColumns: grid }}>${cells}</div></div>
     </div>`;
@@ -802,14 +803,15 @@ export function mountApp(root) {
   </div></div>`;
   effect(() => { emptyState.style.display = project.items().length ? 'none' : 'flex'; });
 
-  // ── annotation overlay (composition layer over the net) ──
-  // Draggable labels + leader lines positioned over the net SVG; repositioned on
-  // rotation/resize via net.onAfterRender. Annotations are overlay elements, not
-  // plot primitives. Anchor/leader each live in attitude or figure space.
+  // ── composition overlay (layer over the net) ──
+  // Draggable elements positioned over the net SVG, repositioned on rotation/resize
+  // via net.onAfterRender. Two element kinds today: annotations (labels + leaders,
+  // attitude/figure space) and floating data tables (figure space, rotation-fixed).
   const annoLayer = document.createElement('div'); annoLayer.className = 'annolayer';
   const annoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); annoLeaders.setAttribute('class', 'anno-leaders');
+  const panelLayer = document.createElement('div'); panelLayer.className = 'panellayer';
   const px = (v) => parseFloat(v) || 0;
-  let annoDragging = false;                             // suppress rebuilds while an overlay element is being dragged
+  let overlayDragging = false;                          // suppress rebuilds while an overlay element is being dragged
   const arrowD = (tx, ty, ex, ey) => {                  // triangle at the target, pointing along the leader
     const dx = tx - ex, dy = ty - ey, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
     const bx = tx - ux * 8, by = ty - uy * 8, nx = -uy * 4, ny = ux * 4;
@@ -842,7 +844,7 @@ export function mountApp(root) {
     const st = a.style();
     if (e.button !== 0 || (which === 'anchor' ? st.anchorLock : st.leaderLock)) return;
     e.preventDefault(); e.stopPropagation(); el.setPointerCapture?.(e.pointerId);
-    annoDragging = true;                                 // freeze rebuilds so this captured element isn't replaced mid-drag
+    overlayDragging = true;                                 // freeze rebuilds so this captured element isn't replaced mid-drag
     const space = (which === 'anchor' ? st.anchorSpace : st.leaderSpace) || 'attitude'; let coords = null;
     const move = (ev) => {
       const sr = net.element.getBoundingClientRect();
@@ -853,25 +855,27 @@ export function mountApp(root) {
     };
     const up = () => {
       el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up);
-      annoDragging = false;                              // before setStyle, so the resulting effect rebuilds cleanly
+      overlayDragging = false;                              // before setStyle, so the resulting effect rebuilds cleanly
       if (coords) a.setStyle({ ...a.currentStyle(), [which]: coords });
     };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   }
   const visibleAnnos = () => project.visibleLeaves().filter((it) => it.type === 'annotation');
-  // size the overlay to sit exactly over the net SVG; returns false if not laid out
-  function fitAnnoLayer() {
+  const tabularItems = () => project.items().filter((it) => it.type !== 'annotation');   // leaves with a data table
+  // size both overlay layers to sit exactly over the net SVG; returns false if not laid out
+  function fitOverlay() {
     const svg = net.element, wrap = annoLayer.parentElement; if (!svg || !wrap) return false;
     const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     if (!sr.width) return false;                                       // hidden tab / headless
-    annoLayer.style.cssText = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
+    const box = `left:${sr.left - wr.left}px;top:${sr.top - wr.top}px;width:${sr.width}px;height:${sr.height}px;`;
+    annoLayer.style.cssText = box; panelLayer.style.cssText = box;
     return true;
   }
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
   function renderAnnos() {
-    if (annoDragging) return;
-    if (!fitAnnoLayer()) { annoLayer.replaceChildren(); return; }
+    if (overlayDragging) return;
+    if (!fitOverlay()) { annoLayer.replaceChildren(); return; }
     const annos = visibleAnnos();
     const rows = annos.map((a) => {
       const st = a.style();
@@ -912,11 +916,11 @@ export function mountApp(root) {
   // lightweight per-frame path (rotation / resize) — move existing elements, no
   // DOM churn. Falls back to a full rebuild if the element set is out of sync.
   function repositionAnnos() {
-    if (annoDragging) return;
+    if (overlayDragging) return;
     const annos = visibleAnnos();
     if (annoLayer.querySelectorAll('[data-anno-label]').length !== annos.length
       || annos.some((a) => !annoLayer.querySelector(`[data-anno-label="${a.id}"]`))) { renderAnnos(); return; }
-    if (!fitAnnoLayer()) return;
+    if (!fitOverlay()) return;
     for (const a of annos) {
       const st = a.style();
       const label = annoLayer.querySelector(`[data-anno-label="${a.id}"]`);
@@ -931,19 +935,82 @@ export function mountApp(root) {
       }
     }
   }
-  net.onAfterRender = repositionAnnos;                                 // rotation: cheap reposition, no DOM churn
+  // ── floating data tables (figure-space panels over the net) ──
+  // A layer's table, pinned over the plot: drag by the title bar, minimise, close.
+  // Config lives in the item's params (tableOpen/tablePos[u,v]/tableW/tableMin) so
+  // it serializes + undoes for free. Figure space → fixed under rotation.
+  const PANEL_POS = [0.28, 0.96];                                      // default top-left, figure coords
+  function dragPanel(e, item, panel) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const cap = e.currentTarget; cap.setPointerCapture?.(e.pointerId); overlayDragging = true;
+    const r0 = net.element.getBoundingClientRect();
+    const offX = e.clientX - r0.left - px(panel.style.left), offY = e.clientY - r0.top - px(panel.style.top);
+    let coords = null;
+    const move = (ev) => {
+      const r = net.element.getBoundingClientRect();
+      const x = ev.clientX - r.left - offX, y = ev.clientY - r.top - offY;
+      panel.style.left = `${x}px`; panel.style.top = `${y}px`;
+      coords = net.locate('figure', x, y);
+    };
+    const up = () => {
+      cap.removeEventListener('pointermove', move); cap.removeEventListener('pointerup', up);
+      overlayDragging = false;
+      if (coords) item.setParams({ tablePos: coords });
+    };
+    cap.addEventListener('pointermove', move); cap.addEventListener('pointerup', up);
+  }
+  function buildPanel(item) {
+    const pr = item.currentParams(), pos = pr.tablePos || PANEL_POS, min = !!pr.tableMin;
+    const p = net.place('figure', pos[0], pos[1]);
+    const panel = document.createElement('div');
+    panel.dataset.panel = item.id;
+    panel.className = `floatpanel${selected() === item ? ' sel' : ''}${min ? ' min' : ''}`;
+    panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`; panel.style.width = `${pr.tableW || 300}px`;
+    const bar = h`<div class="fp-bar">
+      <span class="fp-title">${item.currentName()}</span>
+      <span class="fp-actions">
+        <button class="fp-btn" title=${min ? 'expand' : 'minimise'} onclick=${() => { item.setParams({ tableMin: !min }); bumpTable(); }}>${min ? '▸' : '▾'}</button>
+        <button class="fp-btn" title="close" onclick=${() => { item.setParams({ tableOpen: false }); bumpTable(); }}>×</button>
+      </span></div>`;
+    bar.addEventListener('pointerdown', (ev) => { if (ev.target.closest('.fp-btn')) return; setSelected(item); dragPanel(ev, item, panel); });
+    panel.append(bar);
+    if (!min) { const body = document.createElement('div'); body.className = 'fp-body'; body.append(dataTable(item, tableEdit(), true)); panel.append(body); }
+    return panel;
+  }
+  function renderPanels() {
+    if (overlayDragging) return;
+    if (!fitOverlay()) { panelLayer.replaceChildren(); return; }
+    panelLayer.replaceChildren(...tabularItems().filter((it) => it.currentParams().tableOpen).map(buildPanel));
+  }
+  function repositionPanels() {                                       // resize-only (figure space is rotation-fixed)
+    if (overlayDragging) return;
+    const open = tabularItems().filter((it) => it.currentParams().tableOpen);
+    if (panelLayer.children.length !== open.length || open.some((it) => !panelLayer.querySelector(`[data-panel="${it.id}"]`))) { renderPanels(); return; }
+    if (!fitOverlay()) return;
+    for (const it of open) {
+      const pos = it.currentParams().tablePos || PANEL_POS, p = net.place('figure', pos[0], pos[1]);
+      const panel = panelLayer.querySelector(`[data-panel="${it.id}"]`);
+      panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`;
+    }
+  }
+  const repositionOverlay = () => { repositionAnnos(); repositionPanels(); };
+  net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
+  // panels rebuild on open/close/min/move/select/name + structural table edits
+  // (tableVer); cell edits write through untracked (like the tab) so they keep focus.
+  effect(() => { selected(); tableVer(); tableEdit(); tabularItems().forEach((it) => { it.params(); it.name(); }); renderPanels(); });
 
   const wraps = {
-    net: h`<div class="plotwrap">${net.element}${annoLayer}${legendHost}</div>`,
+    net: h`<div class="plotwrap">${net.element}${annoLayer}${panelLayer}${legendHost}</div>`,
     rose: h`<div class="plotwrap">${rose.element}</div>`,
     fabric: h`<div class="plotwrap">${fabric.element}</div>`,
     table: h`<div class="plotwrap tablewrap">${tableHost}</div>`,
   };
   // observe the stable plotwrap (net.element is swapped on projection rebuilds) so a
-  // window/gutter resize repositions annotations even without an intervening render
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(repositionAnnos).observe(wraps.net);
-  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionAnnos); });
+  // window/gutter resize repositions overlay elements even without an intervening render
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(repositionOverlay).observe(wraps.net);
+  effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;

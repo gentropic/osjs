@@ -219,6 +219,19 @@ test('net select mode: onSelect resolves a layer id, null deselects', async () =
   assert.equal(root.querySelectorAll('.it.sel').length, 0, 'null deselects');
 });
 
+test('floating table: the float button opens a table panel on the selected layer', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const it = handle.project.items().find((x) => x.type !== 'annotation');
+  assert.ok(it, 'seeded with a tabular layer');
+  handle.net.onSelect(it.id); await tick();              // select it so the data tab shows its table
+  [...root.querySelectorAll('.tab')].find((t) => /table/i.test(t.textContent)).click(); await tick();
+  const floatBtn = root.querySelector('[title="float this table over the plot"]');
+  assert.ok(floatBtn, 'float button present in the data table');
+  floatBtn.click(); await tick();
+  assert.equal(it.currentParams().tableOpen, true, 'the layer table is now flagged to float');
+});
+
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
   const t = trend * Math.PI / 180, p = plunge * Math.PI / 180;
   return [Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t), -Math.sin(p)];
