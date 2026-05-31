@@ -120,6 +120,15 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(sw, 'each class has an editable colour');
   sw.value = '#123456'; sw.dispatchEvent(new window.Event('change'));
   assert.ok(item.currentStyle().catColors && Object.values(item.currentStyle().catColors).includes('#123456'), 'editing a class swatch sets catColors');
+
+  // ramp mode → preview bar + clamp inputs (symmetric to the class table)
+  item.setStyle({ ...item.currentStyle(), colorMode: 'ramp', colorBy: 1 });   // ramp by dip
+  await tick();
+  assert.ok(root.querySelector('.ramptable .rampbar'), 'ramp preview bar shown');
+  const clampInputs = [...root.querySelectorAll('.ramptable input[type="number"]')];
+  assert.equal(clampInputs.length, 2, 'min/max clamp inputs');
+  clampInputs[0].value = '10'; clampInputs[0].dispatchEvent(new window.Event('change'));
+  assert.equal(item.currentStyle().rampMin, 10, 'clamping sets rampMin');
 });
 
 test('empty state appears with no data and loads a sample; samples strip is persistent', async () => {

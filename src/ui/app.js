@@ -511,7 +511,7 @@ export function mountApp(root) {
       ${field('column', colCtl)}
       ${field('ramp', rampSel)}
       ${field('reverse', chips(rev))}
-      ${classHost}</div>`;
+      ${classHost}${rampHost}</div>`;
   }
   function toolsSection(item) {
     if (!['planes', 'poles', 'lines'].includes(item.type)) return '';   // derived ops need pair attitudes
@@ -562,8 +562,9 @@ export function mountApp(root) {
     if (sec.classList.toggle('collapsed')) collapsed.add(istit.textContent.trim()); else collapsed.delete(istit.textContent.trim());
   });
   // QGIS-style class table for categorical colour-by: editable swatch · value · count.
-  // Declared before the props effect (colorBySection embeds classHost).
+  // Declared before the props effect (colorBySection embeds classHost / rampHost).
   const classHost = document.createElement('div');
+  const rampHost = document.createElement('div');
   const toHex = (c) => {
     if (!c) return '#000000';
     if (c[0] === '#') return c.length === 4 ? '#' + [...c.slice(1)].map((x) => x + x).join('') : c.slice(0, 7);
@@ -597,6 +598,24 @@ export function mountApp(root) {
         <button class="mini" title="colour the classes along the ramp" onclick=${rampClasses}>ramp</button>
         <button class="mini" onclick=${reset}>reset</button></div>
       ${rows}</div>`);
+  });
+
+  // ramp preview + clamp (symmetric to the class table; shown in ramp mode)
+  effect(() => {
+    const it = selected();
+    const lg = it && !isGroup(it) && it.type !== 'annotation' && it.style().colorMode === 'ramp' ? it.colorLegend() : null;
+    if (!lg || lg.type !== 'ramp') { rampHost.replaceChildren(); return; }
+    const setS = (patch) => it.setStyle({ ...it.currentStyle(), ...patch });
+    const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color.sampleScale(lg.ramp, lg.reverse ? 1 - t : t));
+    const r3 = (x) => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : x);
+    const reset = () => { const s = { ...it.currentStyle() }; delete s.rampMin; delete s.rampMax; it.setStyle(s); };
+    rampHost.replaceChildren(h`<div class="ramptable">
+      <span class="rampbar" style=${{ background: `linear-gradient(to right, ${stops.join(',')})` }}></span>
+      <label class="mrow"><span class="fk">clamp</span><span class="fv">
+        <input type="number" step="any" value=${r3(lg.min)} onchange=${(e) => setS({ rampMin: e.target.value === '' ? null : +e.target.value })}>
+        <input type="number" step="any" value=${r3(lg.max)} onchange=${(e) => setS({ rampMax: e.target.value === '' ? null : +e.target.value })}>
+        <button class="mini" onclick=${reset}>reset</button></span></label>
+    </div>`);
   });
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;
