@@ -63,6 +63,7 @@ export class NetRenderer {
     this.onMeasure = null;
     this.onSelect = null;         // (itemId|null) — select mode: click a layer / empty to deselect
     this.onIdentify = null;       // (dcos, itemId|null) — select click: linked identify (flash nearest datum's row)
+    this.onContextMenu = null;    // ({clientX, clientY, dcos, id}) — right-click on the net
     this._proj = null;
     this._rebuild(project.projection());
   }
@@ -228,6 +229,12 @@ export class NetRenderer {
       this._syncCursor();
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
+    el.addEventListener('contextmenu', (e) => {
+      if (!this.onContextMenu) return;
+      e.preventDefault();
+      const p = toSvg(e);
+      this.onContextMenu({ clientX: e.clientX, clientY: e.clientY, dcos: sn.unproject(p.x, p.y), id: dsId(e.target, el) });
+    });
     this._syncCursor();
   }
 

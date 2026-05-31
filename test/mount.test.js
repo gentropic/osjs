@@ -260,6 +260,36 @@ test('table columns: add then delete a data column (× in edit mode)', async () 
   assert.equal(item.currentColumns().length, c0, 'the × deletes that column');
 });
 
+test('context menu: right-click a layer row → Remove deletes it', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const n0 = handle.project.items().length;
+  const row = root.querySelector('.it:not(.grp-row)');
+  row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+  await tick();
+  const menu = document.querySelector('.ctxmenu');
+  assert.ok(menu, 'a context menu opens');
+  const remove = [...menu.querySelectorAll('.ctx-item')].find((b) => /remove/i.test(b.textContent));
+  assert.ok(remove, 'Remove action present');
+  remove.click(); await tick();
+  assert.equal(handle.project.items().length, n0 - 1, 'Remove deletes the layer');
+  assert.ok(!document.querySelector('.ctxmenu'), 'menu closes after an action');
+});
+
+test('context menu: plot offers copy-attitude + add-annotation-here', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  handle.net.onContextMenu({ clientX: 5, clientY: 5, dcos: [0, 1, 0], id: null });   // N horizontal
+  await tick();
+  const menu = document.querySelector('.ctxmenu');
+  assert.ok([...menu.querySelectorAll('.ctx-item')].some((b) => /copy line/i.test(b.textContent)), 'copy-attitude present');
+  const n0 = handle.project.items().length;
+  [...menu.querySelectorAll('.ctx-item')].find((b) => /add annotation/i.test(b.textContent)).click();
+  await tick();
+  assert.equal(handle.project.items().length, n0 + 1, 'add annotation here creates a note');
+  assert.equal(handle.project.items().at(-1).type, 'annotation');
+});
+
 function bearingDir(trend, plunge) {                    // local trend/plunge → dcos (avoids extra imports)
   const t = trend * Math.PI / 180, p = plunge * Math.PI / 180;
   return [Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t), -Math.sin(p)];

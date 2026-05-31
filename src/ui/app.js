@@ -17,6 +17,7 @@ import { each } from '../../vendor/sideact/render.js';
 import * as bearing from '../../vendor/bearing.mjs';
 import { Project, ITEM_TYPES, serializeProject, loadProject, isGroup, rotateItem, mergeItems, differenceVectors, unfoldItem, commonMean } from '../core/model.js';
 import { NetRenderer } from '../render/net.js';
+import { openMenu } from './contextmenu.js';
 import { RoseRenderer } from '../render/rose.js';
 import { FabricRenderer } from '../render/fabric.js';
 import { parsePairs, parseTriples, parseFaults, parseTable, guessRoles, buildFromTable } from '../io/parse.js';
@@ -252,6 +253,7 @@ export function mountApp(root) {
           project.remove(group); reselectAfterRemove(group);
         }}>×</button>
       </div>`;
+    rowEl.oncontextmenu = (e) => { e.preventDefault(); setSelected(group); openMenu(e.clientX, e.clientY, groupMenu(group)); };
     wireDnD(rowEl, group, true);
     return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
   }
@@ -274,6 +276,7 @@ export function mountApp(root) {
         <span class="ty">${item.type}</span>
         <button class="rm" title="remove" onclick=${(e) => { e.stopPropagation(); project.remove(item); reselectAfterRemove(item); }}>×</button>
       </div>`;
+    rowEl.oncontextmenu = (e) => { e.preventDefault(); setSelected(item); openMenu(e.clientX, e.clientY, itemMenu(item)); };
     wireDnD(rowEl, item, false);
     return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
   }
@@ -948,6 +951,73 @@ export function mountApp(root) {
     const item = project.items().find((x) => x.id === id);
     if (!item || item.type === 'annotation') return;
     const i = nearestDatum(item, dcos); if (i >= 0) flashDatum(item, i);
+  };
+
+  // ── context menus (data tree + plot) ──
+  const copyText = (s) => { try { navigator.clipboard && navigator.clipboard.writeText && navigator.clipboard.writeText(s); } catch { /* clipboard blocked */ } setNotice(`copied: ${s}`); };
+  const tabular = (n) => !isGroup(n) && n.type !== 'annotation';
+  function renameNode(node) {
+    const n = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Rename', node.currentName()) : null;
+    if (n != null && n.trim()) node.setName(n.trim());
+  }
+  function duplicateItem(node) {
+    const copy = new node.constructor({
+      name: `${node.currentName()} copy`,
+      measurements: node.currentMeasurements().map((r) => (Array.isArray(r) ? r.slice() : r)),
+      columns: node.currentColumns().map((c) => ({ name: c.name, values: c.values.slice() })),
+      style: { ...node.currentStyle() }, params: { ...node.currentParams(), tableOpen: false }, layers: { ...node.currentLayers() },
+    });
+    project.add(copy);
+    const parent = project.parentOf(node), sibs = parent ? parent.children() : project.nodes();
+    project.move(copy, parent, sibs.indexOf(node) + 1);
+    setSelected(copy);
+  }
+  function addAnnotationAt(t, p) {
+    setSelected(project.add(new ITEM_TYPES.annotation({ name: 'note', style: { color: '#1d2733', fontSize: 13, text: 'note', anchor: [Math.round(t), Math.round(p)], anchorSpace: 'attitude' } })));
+  }
+  function itemMenu(item) {
+    const open = !!item.currentParams().tableOpen;
+    return [
+      { label: 'Rename…', onClick: () => renameNode(item) },
+      { label: 'Duplicate', onClick: () => duplicateItem(item) },
+      { label: item.currentVisible() ? 'Hide' : 'Show', onClick: () => item.setVisible(!item.currentVisible()) },
+      tabular(item) && { separator: true },
+      tabular(item) && { label: open ? 'Close floating table' : 'Float table over plot', onClick: () => { item.setParams({ tableOpen: !open }); if (!open) setActiveTab('net'); bumpTable(); } },
+      (tabular(item) && open) && { label: 'Reset table size & position', onClick: () => { item.setParams({ tablePos: undefined, tableW: undefined, tableH: undefined, tableMin: false }); bumpTable(); } },
+      { separator: true },
+      { label: 'Remove', danger: true, onClick: () => { project.remove(item); reselectAfterRemove(item); } },
+    ];
+  }
+  function groupMenu(group) {
+    return [
+      { label: 'Rename…', onClick: () => renameNode(group) },
+      { label: group.currentVisible() ? 'Hide' : 'Show', onClick: () => group.setVisible(!group.currentVisible()) },
+      { label: group.currentExpanded() ? 'Collapse' : 'Expand', onClick: () => group.setExpanded(!group.currentExpanded()) },
+      { separator: true },
+      { label: 'Ungroup (keep children)', onClick: () => { const p = project.parentOf(group); group.currentChildren().slice().reverse().forEach((c) => project.move(c, p, 0)); project.remove(group); reselectAfterRemove(group); } },
+      { label: 'Remove group + children', danger: true, onClick: () => { project.remove(group); reselectAfterRemove(group); } },
+    ];
+  }
+  net.onContextMenu = ({ clientX, clientY, dcos, id }) => {
+    const item = id ? project.items().find((x) => x.id === id) : null;
+    const items = [];
+    if (item) {
+      items.push({ label: `Select “${item.currentName()}”`, onClick: () => setSelected(item) });
+      if (dcos && tabular(item)) items.push({ label: 'Identify nearest datum', onClick: () => { setSelected(item); const i = nearestDatum(item, dcos); if (i >= 0) flashDatum(item, i); } });
+      if (tabular(item)) items.push({ label: item.currentParams().tableOpen ? 'Close its table' : 'Float its table', onClick: () => { item.setParams({ tableOpen: !item.currentParams().tableOpen }); bumpTable(); } });
+      items.push({ separator: true });
+    }
+    if (dcos) {
+      const [t, p] = conversions.dcosToLine(dcos), [dd, dip] = conversions.dcosToPlane(dcos);
+      items.push({ label: `Copy line  ${az(t)}/${p2(p)}`, onClick: () => copyText(`${Math.round(t)}/${Math.round(p)}`) });
+      items.push({ label: `Copy plane  ${az(dd)}/${p2(dip)}`, onClick: () => copyText(`${Math.round(dd)}/${Math.round(dip)}`) });
+      items.push({ label: `Copy strike/dip  ${az((dd + 270) % 360)}/${p2(dip)}`, onClick: () => copyText(`${Math.round((dd + 270) % 360)}/${Math.round(dip)}`) });
+      items.push({ label: 'Copy direction cosines', onClick: () => copyText(`[${dcos.map((v) => v.toFixed(4)).join(', ')}]`) });
+      items.push({ separator: true });
+      items.push({ label: 'Add annotation here', onClick: () => addAnnotationAt(t, p) });
+    }
+    items.push({ label: 'Reset orientation', onClick: () => net.resetView() });
+    openMenu(clientX, clientY, items);
   };
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
