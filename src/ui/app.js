@@ -1389,6 +1389,57 @@ export function mountApp(root) {
     });
     window.addEventListener('afterprint', () => { if (printSaved) { printSaved.wrap.style.cssText = printSaved.css; printSaved = null; } });
   }
+
+  // ── composed export (net + overlay → one self-contained image) ──
+  // Serialize the whole plot container (bearing's net SVG + the annotation / table /
+  // legend / page overlays) into a single SVG via <foreignObject>, inlining the app
+  // stylesheets + theme variables so it renders standalone. SVG downloads that; PNG
+  // rasterizes it through a canvas at the figure DPI. Page frame on → crop to it.
+  const EXPORT_VARS = ['--bg', '--panel', '--panel-2', '--raised', '--line', '--line-2', '--ink', '--ink-dim', '--ink-faint', '--amber', '--accent-text', '--cyan', '--cyan-text', '--on-accent', '--canvas-bg', '--canvas-grid', '--vignette', '--ui', '--mono'];
+  function exportVars() {
+    const cs = getComputedStyle(document.body);
+    return EXPORT_VARS.map((n) => `${n}:${cs.getPropertyValue(n)}`).join(';');
+  }
+  function composeFigureSVG() {
+    const wrap = wraps[activeTab()] || wraps.net;
+    const r = wrap.getBoundingClientRect();
+    const W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height));
+    const clone = wrap.cloneNode(true);
+    clone.querySelectorAll('.anno-handle, .fp-resize, .fp-actions, .colgrip, .emptystate').forEach((e) => e.remove());
+    clone.querySelectorAll('.floatpanel .thead-row').forEach((e) => e.remove());
+    clone.querySelectorAll('.sel').forEach((e) => e.classList.remove('sel'));
+    clone.style.cssText = `position:relative;inset:auto;width:${W}px;height:${H}px;display:flex;align-items:center;justify-content:center;`;
+    const cnet = clone.querySelector(':scope > svg'); if (cnet) { cnet.style.width = `${net.element.offsetWidth || 540}px`; cnet.style.height = 'auto'; }   // px, not vh (no viewport in the isolated render)
+    let cx = 0, cy = 0, cw = W, ch = H;
+    if (project.pageShow()) { const fr = pageFrame.getBoundingClientRect(); cx = fr.left - r.left; cy = fr.top - r.top; cw = Math.max(1, Math.round(fr.width)); ch = Math.max(1, Math.round(fr.height)); }
+    const css = [...document.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+    const dark = document.body.classList.contains('theme-dark') ? ' theme-dark' : '';
+    const bg = project.figureBg() === 'transparent' ? 'transparent' : '#ffffff';
+    const ser = new XMLSerializer().serializeToString(clone);
+    const inner = `<div xmlns="http://www.w3.org/1999/xhtml" class="osjs-fig preview${dark}" style="position:relative;width:${W}px;height:${H}px;background:${bg};${exportVars()}"><style>${css}</style>${ser}</div>`;
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="${cx} ${cy} ${cw} ${ch}"><foreignObject x="0" y="0" width="${W}" height="${H}">${inner}</foreignObject></svg>`, w: cw, h: ch };
+  }
+  const triggerDownload = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+  function exportSVG() {
+    const { svg } = composeFigureSVG();
+    triggerDownload(URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), 'figure.svg');
+  }
+  function exportPNG() {
+    const { svg, w, h } = composeFigureSVG();
+    const scale = Math.max(1, project.exportDpi() / 96);
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext('2d');
+      if (project.figureBg() !== 'transparent') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.setTransform(scale, 0, 0, scale, 0, 0); ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => { if (b) triggerDownload(URL.createObjectURL(b), 'figure.png'); else setNotice('PNG export failed (canvas blocked)'); });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); setNotice('export failed — the browser blocked rasterizing the figure'); };
+    img.src = url;
+  }
   effect(() => { for (const k in wraps) wraps[k].style.display = activeTab() === k ? 'flex' : 'none'; if (activeTab() === 'net' && typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(repositionOverlay); });
 
   // ── header / footer ──
@@ -1485,8 +1536,8 @@ export function mountApp(root) {
         <button class="seg" title="save the project to a file" onclick=${saveProject}>save</button>
       </div>
       <div class="grp">
-        <button class="seg" onclick=${() => net.sn.download('stereonet.svg')}>SVG</button>
-        <button class="seg" title="export the net as a PNG at the figure DPI" onclick=${() => net.sn.downloadPNG('stereonet.png', { scale: Math.max(1, project.exportDpi() / 96), background: '#ffffff' })}>PNG</button>
+        <button class="seg" title="export the composed figure (net + annotations + tables + legend) as SVG" onclick=${exportSVG}>SVG</button>
+        <button class="seg" title="export the composed figure as PNG at the figure DPI" onclick=${exportPNG}>PNG</button>
         <button class="seg" title="print / save as PDF (camera-ready figure)" onclick=${() => { requestAnimationFrame(() => { window.print(); }); }}>print</button>
       </div>
       <button class="btn icon" title="toggle theme" onclick=${() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>${() => (theme() === 'dark' ? '☀' : '☾')}</button>
@@ -1529,5 +1580,5 @@ export function mountApp(root) {
     const saved = JSON.parse(lsGet(LAYOUT_KEY) || 'null'); const body = app.querySelector('.body');
     if (saved && body) { if (saved.side) body.style.setProperty('--side-w', saved.side); if (saved.insp) body.style.setProperty('--insp-w', saved.insp); }
   } catch { /* ignore */ }
-  return { project, net, rose, fabric, select: setSelected };
+  return { project, net, rose, fabric, select: setSelected, composeFigureSVG };
 }

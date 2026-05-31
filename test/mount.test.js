@@ -19,6 +19,8 @@ before(async () => {
   globalThis.document = dom.window.document;
   globalThis.DocumentFragment = dom.window.DocumentFragment;
   globalThis.Node = dom.window.Node;
+  globalThis.XMLSerializer = dom.window.XMLSerializer;
+  globalThis.getComputedStyle = dom.window.getComputedStyle;
   ({ mountApp } = await import('../src/ui/app.js'));
 });
 
@@ -312,6 +314,17 @@ test('viewport: zoomAt scales (clamped), panBy translates, reset clears', () => 
   assert.equal(net.viewport.scale, 8, 'zoom is clamped to 8×');
   net.resetViewport();
   assert.deepEqual([net.viewport.tx, net.viewport.ty, net.viewport.scale], [0, 0, 1], 'reset clears the viewport');
+});
+
+test('composed export: builds a self-contained SVG with the overlay baked in', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const { svg, w, h } = handle.composeFigureSVG();
+  assert.match(svg, /^<svg[\s>]/, 'is an SVG');
+  assert.ok(/<foreignObject/.test(svg), 'wraps the HTML overlay in a foreignObject');
+  assert.ok(/<style>/.test(svg), 'inlines the stylesheet so it renders standalone');
+  assert.ok(/--ink\s*:/.test(svg), 'inlines the theme variables');
+  assert.ok(w >= 1 && h >= 1, 'has positive dimensions');
 });
 
 test('footer zoom control: reflects the viewport and the % resets to 100%', async () => {
