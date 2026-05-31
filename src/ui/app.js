@@ -510,7 +510,8 @@ export function mountApp(root) {
       ${field('mode', styleSeg(item, 'colorMode', 'single', [['single', 'single'], ['categorical', 'class'], ['ramp', 'ramp'], ['rgb', 'rgb']]))}
       ${field('column', colCtl)}
       ${field('ramp', rampSel)}
-      ${field('reverse', chips(rev))}</div>`;
+      ${field('reverse', chips(rev))}
+      ${classHost}</div>`;
   }
   function toolsSection(item) {
     if (!['planes', 'poles', 'lines'].includes(item.type)) return '';   // derived ops need pair attitudes
@@ -560,11 +561,42 @@ export function mountApp(root) {
     if (!sec || !sec.classList.contains('psec')) return;
     if (sec.classList.toggle('collapsed')) collapsed.add(istit.textContent.trim()); else collapsed.delete(istit.textContent.trim());
   });
+  // QGIS-style class table for categorical colour-by: editable swatch · value · count.
+  // Declared before the props effect (colorBySection embeds classHost).
+  const classHost = document.createElement('div');
+  const toHex = (c) => {
+    if (!c) return '#000000';
+    if (c[0] === '#') return c.length === 4 ? '#' + [...c.slice(1)].map((x) => x + x).join('') : c.slice(0, 7);
+    const m = /rgb\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
+    return m ? '#' + [1, 2, 3].map((i) => (+m[i]).toString(16).padStart(2, '0')).join('') : '#000000';
+  };
   effect(() => {
     propsHost.replaceChildren(propsFor(selected()));
     for (const sec of propsHost.querySelectorAll('.psec')) {     // re-apply collapse state
       if (collapsed.has(sec.querySelector('.istit')?.textContent.trim())) sec.classList.add('collapsed');
     }
+  });
+  effect(() => {
+    const it = selected();
+    const lg = it && !isGroup(it) && it.type !== 'annotation' && it.style().colorMode === 'categorical' ? it.colorLegend() : null;
+    if (!lg || lg.type !== 'categorical') { classHost.replaceChildren(); return; }
+    const col = it.colorColumns()[it.style().colorBy];
+    const counts = {}; col.values.forEach((v) => { counts[String(v)] = (counts[String(v)] || 0) + 1; });
+    const setCat = (v, c) => it.setStyle({ ...it.currentStyle(), catColors: { ...(it.currentStyle().catColors || {}), [v]: c } });
+    const rows = lg.entries.map(([v, c]) => h`<label class="classrow">
+      <input type="color" value=${toHex(c)} onchange=${(e) => setCat(v, e.target.value)}>
+      <span class="cval">${v || '∅'}</span><span class="ccount">${counts[v] || 0}</span></label>`);
+    const rampClasses = () => {
+      const vals = lg.entries.map(([v]) => v), ramp = it.style().colorRamp || 'viridis';
+      const cc = {}; vals.forEach((v, i) => { cc[v] = color.sampleScale(ramp, vals.length > 1 ? i / (vals.length - 1) : 0); });
+      it.setStyle({ ...it.currentStyle(), catColors: cc });
+    };
+    const reset = () => { const s = { ...it.currentStyle() }; delete s.catColors; it.setStyle(s); };
+    classHost.replaceChildren(h`<div class="classtable">
+      <div class="classhead"><span>classes · ${lg.entries.length}</span>
+        <button class="mini" title="colour the classes along the ramp" onclick=${rampClasses}>ramp</button>
+        <button class="mini" onclick=${reset}>reset</button></div>
+      ${rows}</div>`);
   });
   function propsFor(item) {
     if (!item) return h`<div class="muted">no dataset selected</div>`;

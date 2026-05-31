@@ -112,6 +112,14 @@ test('CSV import: pasting a multi-column table reveals mapping + builds a colour
   assert.ok(titles.includes('color by'), 'inspector shows a color-by section for an item with columns');
   const legendCats = [...root.querySelectorAll('.netlegend .lgcat')].map((e) => (e.textContent || '').trim());
   assert.ok(legendCats.some((t) => t.startsWith('A')) && legendCats.some((t) => t.startsWith('B')), 'net legend lists the classes');
+
+  // categorical → editable class table (one row per class, editing sets catColors)
+  const classRows = [...root.querySelectorAll('.classtable .classrow')];
+  assert.equal(classRows.length, 2, 'a class row per distinct value (A, B)');
+  const sw = classRows[0].querySelector('input[type="color"]');
+  assert.ok(sw, 'each class has an editable colour');
+  sw.value = '#123456'; sw.dispatchEvent(new window.Event('change'));
+  assert.ok(item.currentStyle().catColors && Object.values(item.currentStyle().catColors).includes('#123456'), 'editing a class swatch sets catColors');
 });
 
 test('empty state appears with no data and loads a sample; samples strip is persistent', async () => {

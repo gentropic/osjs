@@ -242,6 +242,15 @@
     .props .ro { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
     /* toggle chips (independent on/off, vs the mutually-exclusive .seg groups) */
     .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    /* categorical class table (editable swatch · value · count) */
+    .classtable { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+    .classhead { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .08em;
+                 text-transform: uppercase; color: var(--ink-faint); }
+    .classhead > span { margin-right: auto; }
+    .classrow { display: flex; align-items: center; gap: 8px; cursor: default; }
+    .classrow input[type="color"] { width: 26px; height: 18px; padding: 0; border: 1px solid var(--line-2); border-radius: 3px; background: none; flex: 0 0 auto; }
+    .classrow .cval { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .classrow .ccount { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
     .chip { padding: 3px 8px; font-size: 10px; letter-spacing: .03em; border: 1px solid var(--line-2);
             border-radius: 4px; background: var(--panel); color: var(--ink-dim); cursor: pointer; }
     .chip:hover { color: var(--ink); border-color: var(--ink-dim); }
