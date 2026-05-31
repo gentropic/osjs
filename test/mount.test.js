@@ -290,6 +290,21 @@ test('context menu: plot offers copy-attitude + add-annotation-here', async () =
   assert.equal(handle.project.items().at(-1).type, 'annotation');
 });
 
+test('inline rename: double-click a layer name edits it in place (no browser dialog)', async () => {
+  const root = document.createElement('div');
+  const handle = mountApp(root);
+  const item = handle.project.items()[0];
+  const nm = root.querySelector(`.it[data-node="${item.id}"] .nm`);
+  assert.ok(nm, 'name span found');
+  nm.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+  await tick();
+  assert.ok(nm.classList.contains('editing'), 'name becomes editable in place');
+  nm.textContent = 'renamed';
+  nm.dispatchEvent(new window.FocusEvent('blur'));
+  await tick();
+  assert.equal(item.currentName(), 'renamed', 'blur commits the new name');
+});
+
 test('add title: ＋ title creates a prominent figure-space text annotation', async () => {
   const root = document.createElement('div');
   const handle = mountApp(root);

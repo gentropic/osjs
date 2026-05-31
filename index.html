@@ -233,6 +233,8 @@
     .it.sel { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--amber); }
     .it .sw { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,.12); }
     .it .nm { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .it .nm.editing { overflow: visible; text-overflow: clip; cursor: text; background: var(--panel-2);
+                      box-shadow: 0 0 0 1px var(--cyan); border-radius: 3px; padding: 0 3px; }
     .it .ty { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; color: var(--ink-faint);
               border: 1px solid var(--line-2); border-radius: 3px; padding: 1px 5px; }
     .it .rm { border: 0; background: none; color: var(--ink-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }

@@ -50,7 +50,24 @@ draggable elements over the net; repositioned on rotation. Element types, growin
 - **annotations** ✓ (built: draggable, multi-space, leader+arrow, locks, background)
 - **table-on-plot** ✓ (built: float a layer's table; drag / minimise / close / resize;
   per-table edit; figure-space, rotation-fixed; config in item params, persists)
-- **legend**, **title/caption**, **scale/north decorations** (next decorations)
+- **legend** (built — draggable + toggleable auto-decoration). **scale bar / north
+  arrow** still to do. (Titles are just prominent figure-anchored annotations now —
+  same machinery + full inspector; a title carrying a leader option is a harmless
+  quirk of the reuse.)
+- **data-point labels** (NEW) — per-datum text labels pinned to points (attitude
+  space, follow rotation): show a column value or the attitude beside a point, with
+  leader lines + collision/declutter handling. The point-label half of "a stereonet
+  is a tiny GIS". Reuses annotation rendering; new bit is *per-datum* generation +
+  declutter. Likely a layer toggle ("label by column") + individually movable labels.
+
+**Composition editing — multi-select + align/distribute** (NEW; needed once a figure
+has several overlay elements): rubber-band / shift-click to select multiple overlay
+elements (annotations, tables, legend, labels), then **align** (left/right/top/bottom/
+centre-h/centre-v) · **distribute** (even spacing) · arrow-key nudge · snap to guides /
+each other / the net centre · move & lock as a set. Distinct from *data* selection
+(the Selections flagship tags measurements); here the objects are composition
+elements. Needs a shared overlay-selection model + an align toolbar shown when ≥2 are
+selected. Print/preview mode is the natural companion.
 
 **Preview / print mode** (overlay-wide — every element, plus the figure chrome):
 a toggle that turns the workspace from *interactive* to *presentation*: hide drag

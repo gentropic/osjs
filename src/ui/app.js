@@ -253,7 +253,9 @@ export function mountApp(root) {
           project.remove(group); reselectAfterRemove(group);
         }}>×</button>
       </div>`;
+    rowEl.dataset.node = group.id;
     rowEl.oncontextmenu = (e) => { e.preventDefault(); setSelected(group); openMenu(e.clientX, e.clientY, groupMenu(group)); };
+    rowEl.querySelector('.nm').addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(group, e.currentTarget); });
     wireDnD(rowEl, group, true);
     return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
   }
@@ -276,7 +278,9 @@ export function mountApp(root) {
         <span class="ty">${item.type}</span>
         <button class="rm" title="remove" onclick=${(e) => { e.stopPropagation(); project.remove(item); reselectAfterRemove(item); }}>×</button>
       </div>`;
+    rowEl.dataset.node = item.id;
     rowEl.oncontextmenu = (e) => { e.preventDefault(); setSelected(item); openMenu(e.clientX, e.clientY, itemMenu(item)); };
+    rowEl.querySelector('.nm').addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(item, e.currentTarget); });
     wireDnD(rowEl, item, false);
     return h`<div class="ds">${rowEl}${kidsWrap}</div>`;
   }
@@ -982,9 +986,24 @@ export function mountApp(root) {
   // ── context menus (data tree + plot) ──
   const copyText = (s) => { try { navigator.clipboard && navigator.clipboard.writeText && navigator.clipboard.writeText(s); } catch { /* clipboard blocked */ } setNotice(`copied: ${s}`); };
   const tabular = (n) => !isGroup(n) && n.type !== 'annotation';
+  // inline rename in the tree (no browser dialog): edit the .nm span in place
+  function startRename(node, nm) {
+    const row = nm.closest('.it'); const wasDrag = row && row.draggable; if (row) row.draggable = false;
+    nm.contentEditable = 'true'; nm.classList.add('editing'); nm.focus();
+    if (typeof getSelection === 'function') { try { const r = document.createRange(); r.selectNodeContents(nm); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } catch { /* no selection api */ } }
+    const finish = (commit) => {
+      nm.removeEventListener('blur', onBlur); nm.removeEventListener('keydown', onKey);
+      nm.contentEditable = 'false'; nm.classList.remove('editing'); if (row) row.draggable = wasDrag;
+      const v = nm.textContent.trim();
+      if (commit && v) node.setName(v); else nm.textContent = node.currentName();
+    };
+    const onBlur = () => finish(true);
+    const onKey = (e) => { if (e.key === 'Enter') { e.preventDefault(); nm.blur(); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } };
+    nm.addEventListener('blur', onBlur); nm.addEventListener('keydown', onKey);
+  }
   function renameNode(node) {
-    const n = (typeof window !== 'undefined' && window.prompt) ? window.prompt('Rename', node.currentName()) : null;
-    if (n != null && n.trim()) node.setName(n.trim());
+    const nm = list.querySelector(`[data-node="${node.id}"] .nm`);
+    if (nm) startRename(node, nm);
   }
   function duplicateItem(node) {
     const copy = new node.constructor({
