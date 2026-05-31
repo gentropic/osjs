@@ -261,6 +261,15 @@ just puts them where the hand already is. Build once as a reusable OSJS-owned
 component (positioned popup, submenus, Esc/click-away dismiss, keyboard nav,
 long-press on touch); zero-dep, same `h`/signal idiom as the rest of the shell.
 
+**Principle: a menu on *everything*.** Anything the user can point at — a datum, a
+derived primitive, a legend swatch, a rose petal, a table cell, an annotation, an
+axis label — should answer a right-click with the actions that make sense *for that
+thing*. The default question for any new element is "what would I want to do to this
+here?", and the default answers are almost always some of: **copy** (in a sensible
+format), **extract / promote to a real layer**, **hide/show**, **style**, **use as
+input** (set centre, unfold about, rotate by). Empty menus are a smell; reach for
+this rather than burying actions in panels.
+
 **Data tree** (right-click an item or group):
 - rename · duplicate · delete · show/hide · solo (hide siblings)
 - group / ungroup · move to group
@@ -281,6 +290,25 @@ long-press on touch); zero-dep, same `h`/signal idiom as the rest of the shell.
   picked point(s) — already wired through measure mode; expose it here too
 - *with an active selection*: extract → new layer · tag-to-set · recolour · invert
   · clear (ties into the Selections flagship)
+
+**Derived / computed elements** (the part most plotting tools never make
+actionable — make every computed primitive a first-class, right-clickable object):
+- *eigenvectors* (V1/V2/V3) → **extract as a lines layer** (the three principal
+  axes as a dataset) · copy each as trend/plunge or dcos · plot V3 as the best-fit
+  girdle plane · set centre to an eigenvector · use V3 as the unfold/rotation axis.
+- *Fisher mean (+ α95 cone)* → extract the mean as a one-point line layer · copy
+  the attitude · extract the α95 small circle as a small-circle layer · set centre
+  to the mean.
+- *best-fit great circle / fold axis* → promote to a planes / lines layer · copy ·
+  unfold the dataset about it.
+- *density peak(s)* (contour maxima) → drop a measurement at the peak · extract
+  peaks as a layer · copy the modal attitude.
+- *rose petal* → select the data in that bin · set it as the rose start · copy the
+  bin range/count. *fabric point* (Woodcock/Vollmer) → select / identify its layer.
+- General move: "**promote this computed thing to a real dataset**" so it can then
+  be styled, exported, fed back as input — the computed overlay stops being a
+  dead-end. (Mechanically: most of these already exist as `params`/stats outputs;
+  the menu just wraps them in a `project.add(...)` with the right payload.)
 
 **Clipboard / copy-as** (cross-surface, a recurring win):
 - *copy attitude as…* — right-click a point on the net → copy the cursor (or a
