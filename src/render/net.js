@@ -195,6 +195,7 @@ export class NetRenderer {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       cur = toSvg(e); moved = false; el.setPointerCapture?.(e.pointerId); e.preventDefault();
+      if (this.mode === 'rotate') el.style.cursor = 'grabbing';
       if (this.mode === 'measure') { const a = sn.unproject(cur.x, cur.y); this._measure = a ? { a, b: null } : null; this.render(); }
     });
     el.addEventListener('pointerup', () => {
@@ -203,11 +204,13 @@ export class NetRenderer {
       cur = null;
       if (this.mode === 'pick' && d && this.onPick) this.onPick(d);
       else if (this.mode === 'measure' && wasClick) { this._measure = null; this.render(); }  // click (no drag) cancels
+      this._syncCursor();
     });
     el.addEventListener('pointerleave', () => { if (this.onHover) this.onHover(null); });
     this._syncCursor();
   }
 
-  _syncCursor() { this._el.style.cursor = this.mode === 'rotate' ? 'grab' : 'crosshair'; }
+  // GIS-like per-mode affordance: grab to spin, crosshair to measure, copy to pick-add
+  _syncCursor() { this._el.style.cursor = this.mode === 'rotate' ? 'grab' : this.mode === 'pick' ? 'copy' : 'crosshair'; }
   setMode(m) { this.mode = m; this._syncCursor(); }
 }

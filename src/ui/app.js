@@ -125,6 +125,15 @@ export function mountApp(root) {
     if (z && !e.shiftKey) { e.preventDefault(); undo(); }
     else if (e.key === 'y' || e.key === 'Y' || (z && e.shiftKey)) { e.preventDefault(); redo(); }
   });
+  // GIS-style quick mode swap: bare m/r/p switch the net tool; 0 resets orientation
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'm') setMode('measure'); else if (k === 'r') setMode('rotate'); else if (k === 'p') setMode('pick');
+    else if (k === '0') net.resetView();
+  });
   effect(() => {
     touchTree(project.nodes());                              // subscribe to the whole tree
     const json = JSON.stringify(serializeProject(project));
@@ -851,12 +860,14 @@ export function mountApp(root) {
       const ex = anchor.x + dx * s, ey = anchor.y + dy * s;            // attach at the label edge
       lines.push(`<line data-anno="${a.id}" x1="${t.x}" y1="${t.y}" x2="${ex}" y2="${ey}" stroke="${st.color || '#1d2733'}" stroke-width="1"/>`);
       if (st.leaderArrow) lines.push(arrowPath(t, ex, ey, st.color));
-      const hd = document.createElement('div');
-      hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}`;
-      hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
-      hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
-      hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
-      handles.push(hd);
+      if (selected() === a) {                              // edit handle only on the selected annotation
+        const hd = document.createElement('div');
+        hd.className = `anno-handle${st.leaderLock ? ' locked' : ''}`;
+        hd.style.left = `${t.x}px`; hd.style.top = `${t.y}px`;
+        hd.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };
+        hd.addEventListener('pointerdown', (ev) => dragPoint(ev, a, hd, 'leader'));
+        handles.push(hd);
+      }
     }
     annoLeaders.innerHTML = lines.join('');
     annoLayer.replaceChildren(annoLeaders, ...rows.map((r) => r.el), ...handles);
@@ -875,7 +886,7 @@ export function mountApp(root) {
 
   // ── header / footer ──
   const projSeg = (proj, label) => h`<button class=${() => (project.projection() === proj ? 'seg on' : 'seg')} onclick=${() => project.setProjection(proj)}>${label}</button>`;
-  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${m === 'measure' ? 'click two points to measure the angle + their common plane' : m === 'rotate' ? 'drag to spin the net' : 'click to add a measurement to the selected layer'} onclick=${() => setMode(m)}>${label}</button>`;
+  const modeSeg = (m, label) => h`<button class=${() => (mode() === m ? 'seg on' : 'seg')} title=${m === 'measure' ? 'measure (m): click two points → angle + their common plane' : m === 'rotate' ? 'rotate (r): drag to spin the net' : 'pick (p): click to add a measurement to the selected layer'} onclick=${() => setMode(m)}>${label}</button>`;
   const cursorText = () => {
     const d = cursor();
     if (!d) return mode() === 'measure' ? 'measure: click two points' : '';
@@ -942,6 +953,7 @@ export function mountApp(root) {
       <div class="grp">${projSeg('equal-area', 'equal-area')}${projSeg('equal-angle', 'equal-angle')}</div>
       <div class="grp" title="net interaction mode">
         ${modeSeg('measure', 'measure')}${modeSeg('rotate', 'rotate')}${modeSeg('pick', 'pick')}
+        <button class="seg" title="reset orientation (0)" onclick=${() => net.resetView()}>⟲</button>
       </div>
       <div class="grp">
         <button class=${() => (canUndo() ? 'seg' : 'seg dim')} title="undo (Ctrl+Z)" onclick=${undo}>↶</button>
