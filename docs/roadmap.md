@@ -252,6 +252,38 @@ multi-plot question — one zoomable canvas vs per-space viewports).
 viewport in the project file (likely yes, it's part of a saved figure)? Does the
 map-composer want one big canvas hosting several plots, or stays one-plot-per-tab?
 
+## Net orientation — readout + go-to
+
+The net's rotation (arcball / `setCenter`) is a full SO(3) view orientation, but
+right now it's invisible: you can spin to an oblique view and have no idea *what*
+you're looking at, and no way to return to a named orientation. Two halves:
+
+- **Readout** (cheap, low-risk — do first): show the current view orientation in
+  the footer, live as you rotate. Updates on `onAfterRender` like the cursor read-out.
+- **Go-to** (the fun half): type an orientation → set the net rotation to it. A small
+  footer input next to the read-out; Enter sets, the read-out then echoes it.
+
+**The design decision — how to represent 3 DOF.** The view orientation has three
+degrees of freedom, so the read-out/input must too:
+- *centre attitude + roll* — trend/plunge of the direction at the net centre (2 DOF)
+  plus an in-plane roll angle. Intuitive ("looking down this line, rotated N°").
+- *dip-dir / dip / rake of the view frame* (the user's suggestion) — one triple that
+  captures all three at once, via `frameFromDipDirRake` (the Leapfrog / Isatis Neo
+  convention the user actually likes; **NOT** Bunge). Compact and already the house
+  convention for orienting a frame.
+Lean toward dip-dir/dip/rake for symmetry with the rest of the rotation tooling, but
+pin the convention deliberately and validate against a reference before shipping
+(the rake sign/zero is exactly the thing that's easy to get subtly wrong).
+
+**What's needed:** bearing already has `frameFromDipDirRake` (triple → matrix) for
+the *go-to*; the *read-out* needs the inverse (current rotation matrix → dip-dir/dip
+/rake), which may be a small bearing addition next to `euler.js`/`rotation.js`.
+Relate to the existing context-menu **"set centre here"** (that's the 2-DOF case, no
+roll); go-to is its full-orientation sibling. Persist as part of the saved view
+(alongside the viewport). Bonus: named presets (down-plunge of the mean, perpendicular
+to the girdle, "reset") become one-click — and tie straight into the derived-element
+menus ("set centre to V1", "view down the fold axis").
+
 ## Context menus (interaction infrastructure)
 
 Right-click (and long-press on touch) menus, context-sensitive to what's under the
