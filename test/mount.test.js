@@ -628,6 +628,18 @@ test('table: ghost rows let you type a new measurement in place', async () => {
   assert.deepEqual(item.currentMeasurements()[n0], [123, 45], 'both typed cells land in the new row');
 });
 
+test('footer: shows the net orientation and updates when it rotates', async () => {
+  const root = document.createElement('div');
+  const { net } = mountApp(root);
+  const orient = () => root.querySelector('.statusbar .orient').textContent.trim();
+  await tick();
+  assert.equal(orient(), 'plan view', 'unrotated net reads as plan view');
+  net.setView(120, 30); await tick();                       // bring 120/30 to the centre
+  assert.match(orient(), /120\/30/, 'rotating to a centre shows that attitude (the line looked down)');
+  net.resetView(); await tick();
+  assert.equal(orient(), 'plan view', 'reset returns to plan view');
+});
+
 test('add-data: committing an empty form creates a blank named layer', async () => {
   const root = document.createElement('div');
   const { project } = mountApp(root);

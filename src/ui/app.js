@@ -1494,7 +1494,7 @@ export function mountApp(root) {
       panel.style.left = `${p.x}px`; panel.style.top = `${p.y}px`;
     }
   }
-  const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); renderSelection(); };
+  const repositionOverlay = () => { repositionPage(); repositionAnnos(); repositionPanels(); repositionDecor(); renderSelection(); bumpOrient(); };
   effect(() => { project.pageShow(); project.pageAspect(); project.figureBg(); repositionPage(); });   // re-place the page on config change
   net.onAfterRender = repositionOverlay;                               // rotation: cheap reposition, no DOM churn
   effect(() => { selected(); project.visibleLeaves().forEach((it) => { it.style(); it.name(); }); renderAnnos(); });   // structure: full rebuild on add/edit/select/remove
@@ -1604,6 +1604,18 @@ export function mountApp(root) {
     let n = 0; for (const it of project.items()) n += it.measurements().length;
     return `${project.items().length} sets · ${n} measurements · ${project.projection()}, ${project.hemisphere()} hemisphere`;
   };
+  // net orientation read-out — the attitude at the centre (the line you're looking
+  // down). Bumped on every render (rotation) via repositionOverlay. Roll / the full
+  // dip-dir/dip/rake go-to is the roadmapped next step; this is the 2-DOF view axis.
+  const [orientVer, setOrientVer] = signal(0);
+  const bumpOrient = () => setOrientVer((v) => v + 1);
+  function orientText() {
+    const sn = net.sn; if (!sn) return '';
+    if (!sn.rotation) return 'plan view';                 // unrotated → straight down, north up
+    const c = sn.layout.center, d = sn.unproject(c, c); if (!d) return '';
+    const [t, p] = conversions.dcosToLine(d);
+    return `view ↧ ${az(t)}/${p2(p)}`;
+  }
 
   // draggable column gutter — resizes the data rail (side) or inspector (insp)
   const LAYOUT_KEY = 'osjs-layout';
@@ -1689,6 +1701,7 @@ export function mountApp(root) {
       ${measureBar}${selBar}
       <span class="spacer"></span>
       <button class=${() => (preview() ? 'pvbtn on' : 'pvbtn')} title="preview — show the figure as it will print (editing stays on)" onclick=${() => setPreview((v) => !v)}>${() => (preview() ? '◉ preview' : '○ preview')}</button>
+      <span class="orient" title="net orientation — the attitude at the centre (the line you're looking down). Drag to rotate; 0 resets.">${() => { orientVer(); return activeTab() === 'net' ? orientText() : ''; }}</span>
       <span class="cnt">${() => countText()}</span>
       ${zoomCtl}
     </footer>

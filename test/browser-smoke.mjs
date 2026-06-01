@@ -255,6 +255,18 @@ await check('table copy → clipboard TSV, and paste → appended rows (Excel ro
   await page.waitForTimeout(40);
 });
 
+await check('footer orientation read-out tracks the net rotation', async () => {
+  await page.evaluate(() => window.osjs.net.resetView());
+  await page.waitForTimeout(40);
+  const before = await page.evaluate(() => document.querySelector('.statusbar .orient')?.textContent.trim());
+  assert(before === 'plan view', `unrotated should read 'plan view' (got "${before}")`);
+  await page.evaluate(() => window.osjs.net.setView(120, 30));
+  await page.waitForTimeout(40);
+  const after = await page.evaluate(() => document.querySelector('.statusbar .orient')?.textContent.trim());
+  assert(/120\/30/.test(after), `rotating should show the centre attitude (got "${after}")`);
+  await page.evaluate(() => window.osjs.net.resetView());
+});
+
 await check('legend exports from the scene at real geometry (names + box)', async () => {
   const svg = await page.evaluate(() => window.osjs.nativeFigure().svg);
   assert(/>bedding</.test(svg) && /></.test(svg), 'legend layer name missing from native export');
