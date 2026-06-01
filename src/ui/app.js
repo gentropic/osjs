@@ -1340,6 +1340,18 @@ export function mountApp(root) {
     rows.forEach((segs, ri) => { const rcy = cy + dims[ri].h / 2; for (const s of segs) prims.push(...s.emit(pos.x + PADX + s._x, rcy)); cy += dims[ri].h + ROWGAP; });
     return prims;
   }
+  // A text halo OPPOSITE the label's own colour — so a label stays its chosen
+  // colour (respected) yet reads on any background or theme (the white disk, the
+  // dark canvas, over data). Light text → dark halo, dark text → light halo.
+  function labelHalo(color) {
+    const c = String(color || '').trim(); let r = 120, g = 120, b = 120, m;
+    if ((m = c.match(/^#([0-9a-f]{3})$/i))) { r = parseInt(m[1][0] + m[1][0], 16); g = parseInt(m[1][1] + m[1][1], 16); b = parseInt(m[1][2] + m[1][2], 16); }
+    else if ((m = c.match(/^#([0-9a-f]{6})$/i))) { r = parseInt(m[1].slice(0, 2), 16); g = parseInt(m[1].slice(2, 4), 16); b = parseInt(m[1].slice(4, 6), 16); }
+    else if ((m = c.match(/rgba?\(([^)]+)\)/i))) { const p = m[1].split(',').map((s) => parseFloat(s)); [r, g, b] = p; }
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const halo = lum > 0.55 ? 'rgba(0,0,0,.7)' : 'rgba(255,255,255,.85)';
+    return `0 0 3px ${halo}, 0 0 2px ${halo}, 0 0 1px ${halo}`;
+  }
   // full rebuild — on add / edit / select / remove. Skipped during a drag so the
   // captured element isn't yanked out from under the pointer.
   function renderAnnos() {
@@ -1354,6 +1366,7 @@ export function mountApp(root) {
       el.className = `anno-label${anchor.hidden ? ' under' : ''}${selected() === a ? ' sel' : ''}${st.anchorLock ? ' locked' : ''}`;
       el.style.left = `${anchor.x}px`; el.style.top = `${anchor.y}px`;
       el.style.color = st.color || '#1d2733'; el.style.fontSize = `${st.fontSize || 13}px`; el.style.fontWeight = st.bold ? 700 : 400;
+      el.style.textShadow = st.box ? 'none' : labelHalo(st.color || '#1d2733');   // box gives its own backing; plain text gets an auto-contrast halo
       if (st.box) { el.classList.add('box'); el.style.background = st.bgColor || '#ffffff'; }
       el.textContent = st.text || 'note';
       el.onclick = (ev) => { ev.stopPropagation(); setSelected(a); };

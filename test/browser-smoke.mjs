@@ -275,6 +275,19 @@ await check('legend exports from the scene at real geometry (names + box)', asyn
   assert(!/NaN|undefined/.test(svg), 'legend/scene produced NaN/undefined coordinates');
 });
 
+await check('dark mode: cardinals stay visible (themed fill) and labels get a halo', async () => {
+  await page.locator('button[title="toggle theme"]').click();   // → dark
+  await page.waitForTimeout(50);
+  const fill = await page.evaluate(() => { const t = document.querySelector('.osjs-cardinal'); return t ? getComputedStyle(t).fill : ''; });
+  assert(fill && fill !== 'rgb(0, 0, 0)', `cardinals still black in dark mode (fill=${fill})`);
+  await page.locator('button[title^="add a text annotation"]').click();
+  await page.waitForTimeout(60);
+  const shadow = await page.evaluate(() => { const l = document.querySelector('.anno-label'); return l ? l.style.textShadow : '(no label)'; });
+  assert(/rgba?\(/.test(shadow), `plain label has no auto-contrast halo (textShadow=${shadow})`);
+  await page.keyboard.press('Escape');
+  await page.locator('button[title="toggle theme"]').click();   // back to light
+});
+
 await browser.close();
 server.close();
 

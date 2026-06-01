@@ -115,6 +115,11 @@
               repeating-linear-gradient(90deg, transparent 0 23px, var(--canvas-grid) 23px 24px),
               var(--canvas-bg); }
     .plotwrap { position: absolute; inset: 0; align-items: center; justify-content: center; }
+    /* net chrome: the N/E/S/W cardinals sit OUTSIDE the (white) disk on the canvas,
+       so they must track the canvas, not the disk — bearing draws them fill:#000
+       (invisible on the dark canvas). A class rule beats the presentation attribute;
+       paint-order:stroke lays a canvas-coloured halo behind for legibility. */
+    .osjs-cardinal { fill: var(--ink); paint-order: stroke; stroke: var(--canvas-bg); stroke-width: 3px; stroke-linejoin: round; }
     /* annotation overlay (composition layer over the net) */
     .annolayer { position: absolute; pointer-events: none; z-index: 2; }
     .anno-leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
